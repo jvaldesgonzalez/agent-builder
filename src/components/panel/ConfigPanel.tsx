@@ -11,6 +11,7 @@ import InfoCollectionTab from "./tabs/InfoCollectionTab";
 import EdgesTab from "./tabs/EdgesTab";
 import StartNodeView from "./views/StartNodeView";
 import GlobalSettingsView from "./views/GlobalSettingsView";
+import EndNodeView from "./views/EndNodeView";
 
 const agentTabs = ["General", "Knowledge Base", "Tools", "Info collection"];
 const toolDispatchTabs = ["Tools"];
@@ -73,18 +74,23 @@ export default function ConfigPanel() {
     return <StartNodeView />;
   }
 
+  // Show End Node View for end node
+  if (node?.type === "end") {
+    return <EndNodeView />;
+  }
+
   // Determine tabs based on selection type
-  const tabs = isEdgeSelected 
-    ? edgeTabs 
-    : node?.type === "tool" 
-      ? toolDispatchTabs 
+  const tabs = isEdgeSelected
+    ? edgeTabs
+    : node?.type === "tool"
+      ? toolDispatchTabs
       : agentTabs;
-  
+
   const currentTab = isEdgeSelected
     ? "Edges"
     : tabs.includes(activeTab)
-    ? activeTab
-    : tabs[0]; // Default to first available tab
+      ? activeTab
+      : tabs[0]; // Default to first available tab
 
   const title = node
     ? (node.data as unknown as AnyNodeData).label
@@ -156,11 +162,10 @@ export default function ConfigPanel() {
             />
           ) : (
             <h2
-              className={`text-sm font-semibold text-gray-900 ${
-                node && (node.type === "agent" || node.type === "tool")
-                  ? "cursor-pointer hover:text-blue-600"
-                  : ""
-              }`}
+              className={`text-sm font-semibold text-gray-900 ${node && (node.type === "agent" || node.type === "tool")
+                ? "cursor-pointer hover:text-blue-600"
+                : ""
+                }`}
               onClick={handleNameClick}
             >
               {title}
@@ -181,11 +186,10 @@ export default function ConfigPanel() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-3 py-2.5 text-xs font-medium transition-colors ${
-              currentTab === tab
-                ? "border-b-2 border-gray-900 text-gray-900"
-                : "text-gray-400 hover:text-gray-600"
-            }`}
+            className={`px-3 py-2.5 text-xs font-medium transition-colors ${currentTab === tab
+              ? "border-b-2 border-gray-900 text-gray-900"
+              : "text-gray-400 hover:text-gray-600"
+              }`}
           >
             {tab}
           </button>

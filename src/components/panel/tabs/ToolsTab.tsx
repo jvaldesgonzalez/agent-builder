@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Wrench, Trash2 } from "lucide-react";
 import { useFlowStore } from "@/store/flowStore";
-import type { AgentNodeData, ToolNodeData, Tool } from "@/types";
+import type { AgentNodeData, ToolNodeData, Tool, ToolParam } from "@/types";
 import AddToolModal from "../modals/AddToolModal";
 
 export default function ToolsTab() {
@@ -20,11 +20,13 @@ export default function ToolsTab() {
   const data = node.data as unknown as AgentNodeData | ToolNodeData;
   const tools = data.tools || [];
 
-  const handleAddTool = (name: string, description: string) => {
+  const handleAddTool = (name: string, description: string, code: string, params: ToolParam[]) => {
     const newTool: Tool = {
       id: `tool-${Date.now()}`,
       name,
       description,
+      code,
+      params,
     };
     addToolToNode(node.id, newTool);
   };

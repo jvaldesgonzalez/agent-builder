@@ -39,17 +39,11 @@ function AgentBuilderCanvasInner() {
     addNode,
     setSelectedNode,
     setSelectedEdge,
-    loadFromLocalStorage,
   } = useFlowStore();
-  
+
   const reactFlowInstance = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const connectingNodeId = useRef<string | null>(null);
-
-  // Load persisted state on mount
-  useEffect(() => {
-    loadFromLocalStorage();
-  }, [loadFromLocalStorage]);
 
   // Register custom node types
   const nodeTypes: NodeTypes = useMemo(
@@ -78,6 +72,7 @@ function AgentBuilderCanvasInner() {
 
       // Check source node type to determine condition type
       const sourceNode = nodes.find((n) => n.id === connection.source);
+      const targetNode = nodes.find((n) => n.id === connection.target);
       const conditionType =
         sourceNode?.type === "tool"
           ? ConditionType.ToolResult
@@ -87,7 +82,8 @@ function AgentBuilderCanvasInner() {
         connection.source,
         connection.target,
         "New condition",
-        conditionType
+        conditionType,
+        targetNode?.type
       );
       addEdge(edge);
     },
@@ -105,7 +101,7 @@ function AgentBuilderCanvasInner() {
     (_event: React.MouseEvent, edge: AppEdge) => {
       // Don't select start edges (they have no condition)
       if (edge.data?.conditionType === null) return;
-      
+
       setSelectedEdge(edge.id);
       setSelectedNode(null);
     },
@@ -138,21 +134,22 @@ function AgentBuilderCanvasInner() {
 
         // Create new agent node at drop position
         const newNode = createNode(AgentNodeType.Agent, position);
-        
+
         // Determine edge condition type based on source node
         const sourceNode = nodes.find((n) => n.id === connectingNodeId.current);
         const conditionType =
           sourceNode?.type === "tool"
             ? ConditionType.ToolResult
             : sourceNode?.type === "start"
-            ? null
-            : ConditionType.LLMCondition;
+              ? null
+              : ConditionType.LLMCondition;
 
         const newEdge = createEdge(
           connectingNodeId.current,
           newNode.id,
           conditionType === ConditionType.ToolResult ? "Success" : "New condition",
-          conditionType
+          conditionType,
+          AgentNodeType.Agent
         );
 
         addNode(newNode);
@@ -194,7 +191,7 @@ function AgentBuilderCanvasInner() {
         </Panel>
 
         <Controls position="bottom-left" />
-        
+
         <FloatingValidationButton />
       </ReactFlow>
     </div>

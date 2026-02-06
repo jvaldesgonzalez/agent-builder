@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Book, Trash2, Search, FileText } from "lucide-react";
+import { Book, Trash2, Search, FileText, Upload, Loader2 } from "lucide-react";
 import { useFlowStore } from "@/store/flowStore";
 import type { AgentNodeData, KnowledgeBase } from "@/types";
-import { MOCK_KNOWLEDGE_BASES } from "@/lib/mockData";
 
 export default function KnowledgeBaseTab() {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
@@ -14,7 +13,34 @@ export default function KnowledgeBaseTab() {
 
   const [showKBList, setShowKBList] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [availableKBs, setAvailableKBs] = useState<KnowledgeBase[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch available knowledge bases from API
+  const fetchKnowledgeBases = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/knowledge-base/files");
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableKBs(data);
+      }
+    } catch (error) {
+      console.error("Error fetching knowledge bases:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch on mount and when dropdown opens
+  useEffect(() => {
+    if (showKBList) {
+      fetchKnowledgeBases();
+    }
+  }, [showKBList]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -37,8 +63,8 @@ export default function KnowledgeBaseTab() {
   const addedKBs = data.knowledgeBases || [];
   const addedKBIds = new Set(addedKBs.map(kb => kb.id));
 
-  // Filter mock data based on search and exclude already added KBs
-  const filteredKBs = MOCK_KNOWLEDGE_BASES.filter(
+  // Filter based on search and exclude already added KBs
+  const filteredKBs = availableKBs.filter(
     (kb) =>
       !addedKBIds.has(kb.id) &&
       kb.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -51,6 +77,47 @@ export default function KnowledgeBaseTab() {
 
   const handleRemoveKB = (kbId: string) => {
     removeKnowledgeBaseFromNode(node.id, kbId);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/knowledge-base/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        const uploadedKB = await response.json();
+        // Refresh the list
+        await fetchKnowledgeBases();
+        // Optionally auto-add the uploaded file
+        // addKnowledgeBaseToNode(node.id, uploadedKB);
+      } else {
+        console.error("Upload failed");
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error);
+    } finally {
+      setUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   return (
@@ -70,6 +137,34 @@ export default function KnowledgeBaseTab() {
             ref={dropdownRef}
             className="absolute left-0 right-0 top-full z-50 mt-2 flex flex-col gap-2 rounded-lg border border-gray-200 bg-white shadow-lg p-3"
           >
+            {/* File upload button */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileUpload}
+                className="hidden"
+                accept=".pdf,.txt,.md,.doc,.docx"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:border-gray-400 transition-colors disabled:opacity-50"
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={16} />
+                    Upload new file
+                  </>
+                )}
+              </button>
+            </div>
+
             {/* Search input */}
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -85,7 +180,12 @@ export default function KnowledgeBaseTab() {
 
             {/* Available knowledge bases list */}
             <div className="max-h-64 overflow-y-auto space-y-1">
-              {filteredKBs.length > 0 ? (
+              {loading ? (
+                <div className="flex items-center justify-center py-4 text-sm text-gray-400">
+                  <Loader2 size={16} className="animate-spin mr-2" />
+                  Loading...
+                </div>
+              ) : filteredKBs.length > 0 ? (
                 filteredKBs.map((kb) => (
                   <button
                     key={kb.id}
@@ -98,14 +198,14 @@ export default function KnowledgeBaseTab() {
                         {kb.name}
                       </div>
                       <div className="text-xs text-gray-400 truncate">
-                        {kb.description}
+                        {kb.description} {kb.fileSize && `• ${formatFileSize(kb.fileSize)}`}
                       </div>
                     </div>
                   </button>
                 ))
               ) : (
                 <div className="text-center py-4 text-sm text-gray-400">
-                  {searchTerm ? "No knowledge bases found" : "All knowledge bases added"}
+                  {searchTerm ? "No knowledge bases found" : "No files uploaded yet"}
                 </div>
               )}
             </div>

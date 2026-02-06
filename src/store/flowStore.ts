@@ -15,7 +15,8 @@ import {
   generateNodeId,
 } from "@/lib/defaults";
 
-const STORAGE_KEY = "agent-builder-flow";
+// Debounce timeout for auto-save
+let saveTimeout: NodeJS.Timeout | null = null;
 
 // ── Store types ─────────────────────────────────────────────────
 interface FlowState {
@@ -23,6 +24,8 @@ interface FlowState {
   edges: AppEdge[];
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
+  currentFlowId: string | null;
+  currentFlowName: string;
 
   // React Flow change handlers
   onNodesChange: (changes: NodeChange<AppNode>[]) => void;
@@ -68,9 +71,11 @@ interface FlowState {
   addKnowledgeBaseToNode: (nodeId: string, kb: KnowledgeBase) => void;
   removeKnowledgeBaseFromNode: (nodeId: string, kbId: string) => void;
 
-  // Persistence
-  saveToLocalStorage: () => void;
-  loadFromLocalStorage: () => void;
+  // Flow management
+  setCurrentFlowId: (id: string) => void;
+  updateFlowName: (name: string) => void;
+  loadFlow: (id: string) => Promise<void>;
+  saveFlow: () => void;
 }
 
 // ── Helper: compute position below parent (centered) ─────────────
@@ -90,16 +95,16 @@ function getChildPosition(
       default: return 150;
     }
   };
-  
+
   const parentWidth = getNodeWidth(parentNode.type);
   const childWidth = getNodeWidth(childType);
-  
+
   // Center child relative to parent
   const centerOffset = (parentWidth - childWidth) / 2;
-  
+
   // For multiple siblings, offset horizontally
   const siblingOffset = siblingCount * 250;
-  
+
   return {
     x: parentNode.position.x + centerOffset + siblingOffset,
     y: parentNode.position.y + 180,
@@ -111,15 +116,17 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   edges: createInitialEdges(),
   selectedNodeId: null,
   selectedEdgeId: null,
+  currentFlowId: null,
+  currentFlowName: "New Agent",
 
   // ── React Flow handlers ─────────────────────────────────────
   onNodesChange: (changes) => {
     set({ nodes: applyNodeChanges(changes, get().nodes) });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
   onEdgesChange: (changes) => {
     set({ edges: applyEdgeChanges(changes, get().edges) });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Selection ───────────────────────────────────────────────
@@ -133,7 +140,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       selectedNodeId: node.id,
       selectedEdgeId: null,
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Add child node from "+" button ──────────────────────────
@@ -151,7 +158,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     // Determine condition type based on parent type
     const parentType = parent.type as AgentNodeType;
     let conditionType: ConditionType | null;
-    
+
     if (parentType === AgentNodeType.Start) {
       // Start edges have no condition
       conditionType = null;
@@ -162,7 +169,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
 
     const label = edgeLabel || "New condition";
-    const newEdge = createEdge(parentId, newNode.id, label, conditionType);
+    const newEdge = createEdge(parentId, newNode.id, label, conditionType, childType);
 
     set({
       nodes: [...nodes, newNode],
@@ -170,7 +177,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       selectedNodeId: newNode.id,
       selectedEdgeId: null,
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Update node data ────────────────────────────────────────
@@ -180,7 +187,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         n.id === nodeId ? { ...n, data: { ...n.data, ...data } } : n
       ),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Delete node & connected edges ───────────────────────────
@@ -194,7 +201,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       selectedNodeId:
         get().selectedNodeId === nodeId ? null : get().selectedNodeId,
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Duplicate node ──────────────────────────────────────────
@@ -209,13 +216,13 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       data: { ...node.data },
     };
     set({ nodes: [...get().nodes, clone], selectedNodeId: newId });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Edge CRUD ───────────────────────────────────────────────
   addEdge: (edge) => {
     set({ edges: [...get().edges, edge] });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   updateEdgeData: (edgeId, data) => {
@@ -226,7 +233,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           : e
       ),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   deleteEdge: (edgeId) => {
@@ -235,7 +242,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       selectedEdgeId:
         get().selectedEdgeId === edgeId ? null : get().selectedEdgeId,
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Tool management ─────────────────────────────────────────
@@ -255,7 +262,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   removeToolFromNode: (nodeId, toolId) => {
@@ -274,7 +281,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   updateToolInNode: (nodeId, toolId, updates) => {
@@ -295,7 +302,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Info Collection management ──────────────────────────────
@@ -315,7 +322,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   removeInfoCollectionFromNode: (nodeId, itemId) => {
@@ -334,7 +341,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   updateInfoCollectionInNode: (nodeId, itemId, updates) => {
@@ -355,7 +362,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   // ── Knowledge Base management ───────────────────────────────
@@ -375,7 +382,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
   removeKnowledgeBaseFromNode: (nodeId, kbId) => {
@@ -394,27 +401,61 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         return n;
       }),
     });
-    get().saveToLocalStorage();
+    get().saveFlow();
   },
 
-  // ── Persistence ─────────────────────────────────────────────
-  saveToLocalStorage: () => {
-    if (typeof window === "undefined") return;
-    const { nodes, edges } = get();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ nodes, edges }));
+  // ── Flow management ────────────────────────────────────────
+  setCurrentFlowId: (id) => set({ currentFlowId: id }),
+
+  updateFlowName: (name) => {
+    set({ currentFlowName: name });
+    get().saveFlow();
   },
 
-  loadFromLocalStorage: () => {
-    if (typeof window === "undefined") return;
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
+  loadFlow: async (id) => {
     try {
-      const { nodes, edges } = JSON.parse(raw);
-      if (Array.isArray(nodes) && Array.isArray(edges)) {
-        set({ nodes, edges });
+      const response = await fetch(`/api/flows/${id}`);
+      if (response.ok) {
+        const flowData = await response.json();
+        set({
+          nodes: flowData.nodes || createInitialNodes(),
+          edges: flowData.edges || createInitialEdges(),
+          currentFlowName: flowData.name || "New Agent",
+        });
+      } else {
+        // Flow doesn't exist yet, use defaults
+        set({
+          nodes: createInitialNodes(),
+          edges: createInitialEdges(),
+          currentFlowName: "New Agent",
+        });
       }
-    } catch {
-      // ignore corrupt data
+    } catch (error) {
+      console.error("Error loading flow:", error);
     }
+  },
+
+  saveFlow: () => {
+    const { currentFlowId, currentFlowName, nodes, edges } = get();
+    if (!currentFlowId) return;
+
+    // Debounce save to avoid too many API calls
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+      try {
+        await fetch("/api/flows/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: currentFlowId,
+            name: currentFlowName,
+            nodes,
+            edges,
+          }),
+        });
+      } catch (error) {
+        console.error("Error saving flow:", error);
+      }
+    }, 1000); // Wait 1 second before saving
   },
 }));

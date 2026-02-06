@@ -16,10 +16,18 @@ export enum ConditionType {
 }
 
 // ── Tool interface ──────────────────────────────────────────────
+export interface ToolParam {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface Tool {
   id: string;
   name: string;
   description: string;
+  code: string; // JavaScript code for the tool
+  params: ToolParam[]; // Parameters the tool receives
 }
 
 // ── Info Collection interface ───────────────────────────────────
@@ -34,6 +42,10 @@ export interface KnowledgeBase {
   id: string;
   name: string;
   description: string;
+  fileName?: string; // Stored filename
+  filePath?: string; // Path to file in public folder
+  uploadDate?: string; // ISO date string
+  fileSize?: number; // File size in bytes
 }
 
 // ── Node data payloads ──────────────────────────────────────────
@@ -68,6 +80,7 @@ export interface SelectAgentNodeData {
 
 export interface EndNodeData {
   label: string;
+  endLabel?: string; // Custom label to identify which end the agent went through
   [key: string]: unknown;
 }
 
@@ -87,6 +100,7 @@ export interface ConditionEdgeData {
   conditionType: ConditionType | null; // null for start edges (no condition)
   isSuccess?: boolean; // For tool result edges: true = success, false = failure
   conditionExpression?: string; // For LLM conditions: the condition logic
+  overrideEndCondition?: boolean; // For edges to End nodes: true = show condition expression
   [key: string]: unknown;
 }
 

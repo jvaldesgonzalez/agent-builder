@@ -1,0 +1,105 @@
+{
+  "id": "flow-1770416066937",
+  "name": "Test agent 1",
+  "nodes": [
+    {
+      "id": "start-node",
+      "type": "start",
+      "position": {
+        "x": 400,
+        "y": 50
+      },
+      "data": {
+        "label": "Start"
+      },
+      "measured": {
+        "width": 98,
+        "height": 78
+      }
+    },
+    {
+      "id": "node-1770416131818-1",
+      "type": "agent",
+      "position": {
+        "x": 318.6052563336496,
+        "y": 234.8816028322264
+      },
+      "data": {
+        "label": "New Agent",
+        "description": "You're a helpful assistant",
+        "conversationGoal": "You're a helpful assistant",
+        "llm": "GPT-4o",
+        "subItems": 0,
+        "tools": [
+          {
+            "id": "tool-1770416297666",
+            "name": "hello",
+            "description": "says hello world",
+            "code": "function tool() {\n  // Your code here\n  return \"Hello world\"\n}",
+            "params": []
+          }
+        ],
+        "knowledgeBases": [
+          {
+            "id": "kb-1770414914690",
+            "name": "Bot de voz Querétaro.docx",
+            "description": "Uploaded: 2/6/2026",
+            "fileName": "Bot de voz Querétaro-1770414914690.docx",
+            "filePath": "/uploads/Bot de voz Querétaro-1770414914690.docx",
+            "uploadDate": "2026-02-06T21:55:14.692Z",
+            "fileSize": 17843
+          }
+        ]
+      },
+      "measured": {
+        "width": 260,
+        "height": 135
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-1770416135418-2",
+      "type": "end",
+      "position": {
+        "x": 400,
+        "y": 506.3601490203061
+      },
+      "data": {
+        "label": "End",
+        "endLabel": ""
+      },
+      "measured": {
+        "width": 92,
+        "height": 46
+      },
+      "selected": false,
+      "dragging": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1770416131819-1",
+      "source": "start-node",
+      "target": "node-1770416131818-1",
+      "type": "conditionEdge",
+      "data": {
+        "label": "New condition",
+        "conditionType": null
+      }
+    },
+    {
+      "id": "edge-1770416135418-2",
+      "source": "node-1770416131818-1",
+      "target": "node-1770416135418-2",
+      "type": "conditionEdge",
+      "data": {
+        "label": "End Condition",
+        "conditionType": "llm_condition",
+        "conditionExpression": "End Condition",
+        "overrideEndCondition": false
+      }
+    }
+  ],
+  "updatedAt": "2026-02-06T22:36:31.039Z"
+}

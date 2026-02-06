@@ -49,7 +49,10 @@ export function createDefaultSelectAgentData(
 }
 
 export function createDefaultEndData(): EndNodeData {
-  return { label: "End" };
+  return {
+    label: "End",
+    endLabel: "",
+  };
 }
 
 export function createDefaultStartData(): StartNodeData {
@@ -85,19 +88,27 @@ export function createEdge(
   source: string,
   target: string,
   label = "New condition",
-  conditionType: ConditionType | null = ConditionType.LLMCondition
+  conditionType: ConditionType | null = ConditionType.LLMCondition,
+  targetNodeType?: string
 ): AppEdge {
   const edgeData: ConditionEdgeData = {
     label,
     conditionType,
   };
-  
+
   // Initialize isSuccess and label for tool result edges
   if (conditionType === ConditionType.ToolResult) {
     edgeData.isSuccess = true;
     edgeData.label = "Success"; // Default label matches switch state
   }
-  
+
+  // For edges to End nodes: set default condition, label, and mark override as false
+  if (targetNodeType === AgentNodeType.End) {
+    edgeData.label = "End Condition";
+    edgeData.conditionExpression = "End Condition";
+    edgeData.overrideEndCondition = false;
+  }
+
   return {
     id: generateEdgeId(),
     source,
