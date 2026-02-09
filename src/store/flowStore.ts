@@ -72,6 +72,7 @@ interface FlowState {
   removeKnowledgeBaseFromNode: (nodeId: string, kbId: string) => void;
 
   // Flow management
+  isFlowLoaded: boolean;
   setCurrentFlowId: (id: string) => void;
   updateFlowName: (name: string) => void;
   loadFlow: (id: string) => Promise<void>;
@@ -118,6 +119,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   selectedEdgeId: null,
   currentFlowId: null,
   currentFlowName: "New Agent",
+  isFlowLoaded: false,
 
   // ── React Flow handlers ─────────────────────────────────────
   onNodesChange: (changes) => {
@@ -413,6 +415,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   loadFlow: async (id) => {
+    set({ isFlowLoaded: false }); // Reset loaded flag
     try {
       const response = await fetch(`/api/flows/${id}`);
       if (response.ok) {
@@ -421,6 +424,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           nodes: flowData.nodes || createInitialNodes(),
           edges: flowData.edges || createInitialEdges(),
           currentFlowName: flowData.name || "New Agent",
+          isFlowLoaded: true, // Mark as loaded
         });
       } else {
         // Flow doesn't exist yet, use defaults
@@ -428,16 +432,20 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           nodes: createInitialNodes(),
           edges: createInitialEdges(),
           currentFlowName: "New Agent",
+          isFlowLoaded: true, // Mark as loaded (new flow)
         });
       }
     } catch (error) {
       console.error("Error loading flow:", error);
+      // Even on error, we might want to allow editing? Or keep locked?
+      // Better to allow editing default state if load fails
+      set({ isFlowLoaded: true });
     }
   },
 
   saveFlow: () => {
-    const { currentFlowId, currentFlowName, nodes, edges } = get();
-    if (!currentFlowId) return;
+    const { currentFlowId, currentFlowName, nodes, edges, isFlowLoaded } = get();
+    if (!currentFlowId || !isFlowLoaded) return; // Prevent saving if not loaded 
 
     // Debounce save to avoid too many API calls
     if (saveTimeout) clearTimeout(saveTimeout);

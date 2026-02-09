@@ -1,6 +1,6 @@
 {
   "id": "flow-1770416066937",
-  "name": "Test agent 1",
+  "name": "New Agent",
   "nodes": [
     {
       "id": "start-node",
@@ -18,52 +18,30 @@
       }
     },
     {
-      "id": "node-1770416131818-1",
+      "id": "node-1770419373373-2",
       "type": "agent",
       "position": {
-        "x": 318.6052563336496,
-        "y": 234.8816028322264
+        "x": 320,
+        "y": 230
       },
       "data": {
         "label": "New Agent",
-        "description": "You're a helpful assistant",
-        "conversationGoal": "You're a helpful assistant",
+        "description": "Eres un agente cubano que dice asere que bola",
+        "conversationGoal": "Eres un agente cubano que dice asere que bola",
         "llm": "GPT-4o",
-        "subItems": 0,
-        "tools": [
-          {
-            "id": "tool-1770416297666",
-            "name": "hello",
-            "description": "says hello world",
-            "code": "function tool() {\n  // Your code here\n  return \"Hello world\"\n}",
-            "params": []
-          }
-        ],
-        "knowledgeBases": [
-          {
-            "id": "kb-1770414914690",
-            "name": "Bot de voz Querétaro.docx",
-            "description": "Uploaded: 2/6/2026",
-            "fileName": "Bot de voz Querétaro-1770414914690.docx",
-            "filePath": "/uploads/Bot de voz Querétaro-1770414914690.docx",
-            "uploadDate": "2026-02-06T21:55:14.692Z",
-            "fileSize": 17843
-          }
-        ]
+        "subItems": 0
       },
       "measured": {
         "width": 260,
-        "height": 135
-      },
-      "selected": false,
-      "dragging": false
+        "height": 151
+      }
     },
     {
-      "id": "node-1770416135418-2",
+      "id": "node-1770419376553-3",
       "type": "end",
       "position": {
-        "x": 400,
-        "y": 506.3601490203061
+        "x": 400.5,
+        "y": 469
       },
       "data": {
         "label": "End",
@@ -79,9 +57,9 @@
   ],
   "edges": [
     {
-      "id": "edge-1770416131819-1",
+      "id": "edge-1770419373373-2",
       "source": "start-node",
-      "target": "node-1770416131818-1",
+      "target": "node-1770419373373-2",
       "type": "conditionEdge",
       "data": {
         "label": "New condition",
@@ -89,9 +67,9 @@
       }
     },
     {
-      "id": "edge-1770416135418-2",
-      "source": "node-1770416131818-1",
-      "target": "node-1770416135418-2",
+      "id": "edge-1770419376553-3",
+      "source": "node-1770419373373-2",
+      "target": "node-1770419376553-3",
       "type": "conditionEdge",
       "data": {
         "label": "End Condition",
@@ -101,5 +79,5 @@
       }
     }
   ],
-  "updatedAt": "2026-02-06T22:36:31.039Z"
+  "updatedAt": "2026-02-06T23:09:46.129Z"
 }

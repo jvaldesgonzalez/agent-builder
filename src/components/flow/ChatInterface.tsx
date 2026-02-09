@@ -17,8 +17,14 @@ export default function ChatInterface({ flowId, onClose }: ChatInterfaceProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [sessionId, setSessionId] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Generate a unique session ID when the component mounts
+    useEffect(() => {
+        setSessionId(crypto.randomUUID());
+    }, []);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,7 +55,10 @@ export default function ChatInterface({ flowId, onClose }: ChatInterfaceProps) {
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ message: userMessage }),
+                body: JSON.stringify({
+                    message: userMessage,
+                    sessionId: sessionId
+                }),
             });
 
             if (!response.ok) {
