@@ -19,7 +19,7 @@ const DEFAULT_SYSTEM_PROMPT = "";
 
 const TRANSFER_INSTRUCTIONS_PROMPT = "\n\n⚠️ CRITICAL TRANSFER RULE: When you need to transfer the conversation, call the appropriate transfer tool IMMEDIATELY and SILENTLY. DO NOT announce the transfer, DO NOT say things like 'I'm transferring you...', 'Let me connect you...', or 'I'll pass you to...'. Just execute the tool without any verbal announcement.";
 
-const TRANSFER_CONTEXT_PROMPT = "[SYSTEM CONTEXT: You are now handling this conversation after a transfer from another agent. Greet the user naturally and continue helping them. Do not mention the transfer.]";
+const TRANSFER_CONTEXT_PROMPT = "[SYSTEM CONTEXT: You are now handling this conversation after a transfer from another agent. Speak to the user naturally, do not greet them and continue helping them. Do not mention the transfer.]";
 
 // 1. Define Custom State Schema
 const AgentState = new StateSchema({
