@@ -6,8 +6,8 @@
       "id": "start-node",
       "type": "start",
       "position": {
-        "x": 400,
-        "y": 50
+        "x": 390.23679433554713,
+        "y": 63.25006483032884
       },
       "data": {
         "label": "Start"
@@ -15,33 +15,115 @@
       "measured": {
         "width": 98,
         "height": 78
-      }
+      },
+      "selected": false,
+      "dragging": false
     },
     {
       "id": "node-1770419373373-2",
       "type": "agent",
       "position": {
-        "x": 320,
-        "y": 230
+        "x": 370.1091328927871,
+        "y": 242.27537905131416
       },
       "data": {
-        "label": "New Agent",
-        "description": "Eres un agente cubano que dice asere que bola",
-        "conversationGoal": "Eres un agente cubano que dice asere que bola",
+        "label": "Cubano",
+        "description": "Eres un agente cubano que dice asere que bola, tu mision es guiar al usuario hacia dos puntos de venta. \nVenta de repuestos o venta de autos nuevos.\npara esto tienes dos subagentes a los que puedes transferir.\nIntenta no transferir sin antes no haber tenido el nombre del cliente",
+        "conversationGoal": "Eres un agente cubano que dice asere que bola, tu mision es guiar al usuario hacia dos puntos de venta. \nVenta de repuestos o venta de autos nuevos.\npara esto tienes dos subagentes a los que puedes transferir.\nIntenta no transferir sin antes no haber tenido el nombre del cliente",
+        "llm": "GPT-4o",
+        "subItems": 0,
+        "knowledgeBases": [
+          {
+            "id": "kb-1770414914690",
+            "name": "Bot de voz Querétaro.docx",
+            "description": "Uploaded: 2/6/2026",
+            "fileName": "Bot de voz Querétaro-1770414914690.docx",
+            "filePath": "/uploads/Bot de voz Querétaro-1770414914690.docx",
+            "uploadDate": "2026-02-06T21:55:14.692Z",
+            "fileSize": 17843
+          }
+        ],
+        "infoCollection": [
+          {
+            "id": "info-1770682085172",
+            "label": "address",
+            "description": "la direccion del usuario"
+          }
+        ]
+      },
+      "measured": {
+        "width": 260,
+        "height": 151
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-1770685407890-1",
+      "type": "agent",
+      "position": {
+        "x": 108.44659249536662,
+        "y": 522.9626575884996
+      },
+      "data": {
+        "label": "nuevos",
+        "description": "Guias al cliente a comprar un vehiculo nuevo de toyota, tienes una personalidad de espania de madrid",
+        "conversationGoal": "Guias al cliente a comprar un vehiculo nuevo de toyota, tienes una personalidad de espania de madrid",
         "llm": "GPT-4o",
         "subItems": 0
       },
       "measured": {
         "width": 260,
         "height": 151
-      }
+      },
+      "selected": false,
+      "dragging": false
     },
     {
-      "id": "node-1770419376553-3",
+      "id": "node-1770685440971-2",
       "type": "end",
       "position": {
-        "x": 400.5,
-        "y": 469
+        "x": 397.9231030871743,
+        "y": 799.9289715666788
+      },
+      "data": {
+        "label": "End",
+        "endLabel": ""
+      },
+      "measured": {
+        "width": 92,
+        "height": 46
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-1770843586432-1",
+      "type": "agent",
+      "position": {
+        "x": 658.6850702676902,
+        "y": 508.95158151639976
+      },
+      "data": {
+        "label": "New Agent",
+        "description": "Tu objetivo es tener repuestos de vehiculos, eres un agente argentino muy patriota",
+        "conversationGoal": "Tu objetivo es tener repuestos de vehiculos, eres un agente argentino muy patriota",
+        "llm": "GPT-4o",
+        "subItems": 0
+      },
+      "measured": {
+        "width": 260,
+        "height": 151
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "node-1770843655685-2",
+      "type": "end",
+      "position": {
+        "x": 675.303239225678,
+        "y": 805.0698824680754
       },
       "data": {
         "label": "End",
@@ -67,17 +149,51 @@
       }
     },
     {
-      "id": "edge-1770419376553-3",
+      "id": "edge-1770685407890-1",
       "source": "node-1770419373373-2",
-      "target": "node-1770419376553-3",
+      "target": "node-1770685407890-1",
+      "type": "conditionEdge",
+      "data": {
+        "label": "Nuevos",
+        "conditionType": "llm_condition",
+        "conditionExpression": "Cuando el cliente quiera venta de autos nuevos"
+      }
+    },
+    {
+      "id": "edge-1770685440971-2",
+      "source": "node-1770685407890-1",
+      "target": "node-1770685440971-2",
       "type": "conditionEdge",
       "data": {
         "label": "End Condition",
         "conditionType": "llm_condition",
-        "conditionExpression": "End Condition",
-        "overrideEndCondition": false
+        "conditionExpression": "Si el usuario dice adios",
+        "overrideEndCondition": true
+      }
+    },
+    {
+      "id": "edge-1770843586432-1",
+      "source": "node-1770419373373-2",
+      "target": "node-1770843586432-1",
+      "type": "conditionEdge",
+      "data": {
+        "label": "Repuestos",
+        "conditionType": "llm_condition",
+        "conditionExpression": "Cuando el cliente quiera comprar repuestos"
+      }
+    },
+    {
+      "id": "edge-1770843655685-2",
+      "source": "node-1770843586432-1",
+      "target": "node-1770843655685-2",
+      "type": "conditionEdge",
+      "data": {
+        "label": "End Condition",
+        "conditionType": "llm_condition",
+        "conditionExpression": "Cuando el cliente diga adios",
+        "overrideEndCondition": true
       }
     }
   ],
-  "updatedAt": "2026-02-06T23:09:46.129Z"
+  "updatedAt": "2026-02-11T21:15:42.672Z"
 }

@@ -24,8 +24,12 @@ export async function POST(
         const fileContent = await readFile(filePath, "utf8");
         const flowData = JSON.parse(fileContent);
 
-        // Rebuild the graph (stateless for this demo)
-        const graph = await AgentFactory.createAgentGraph(id, flowData.nodes, flowData.edges);
+        // Rebuild the graph and get the initial agent ID
+        const { graph, initialAgentId } = await AgentFactory.createAgentGraph(
+            id,
+            flowData.nodes,
+            flowData.edges
+        );
 
         // Create configuration with thread_id for persistence
         // Use sessionId from client if available, otherwise fall back to flow ID (legacy/backup)
@@ -35,8 +39,13 @@ export async function POST(
             }
         };
 
+        // Get the thread state to check if currentAgent is already set
+        const state = await graph.getState(config);
+
         const input = {
-            messages: [new HumanMessage(message)]
+            messages: [new HumanMessage(message)],
+            // Only set currentAgent on first message of a thread
+            ...(state?.values?.currentAgent ? {} : { currentAgent: initialAgentId })
         };
 
         // Invoke with config to enable checkpointer
