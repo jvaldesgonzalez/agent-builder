@@ -9,15 +9,20 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@langchain/community": "^1.1.14",
     "@langchain/core": "1.1.22",
     "@langchain/google-genai": "^2.1.17",
     "@langchain/langgraph": "^1.1.4",
+    "@langchain/textsplitters": "^1.0.1",
     "@uiw/react-textarea-code-editor": "^3.1.1",
     "@xyflow/react": "^12.10.0",
+    "d3-dsv": "^3.0.1",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "overrides": {
