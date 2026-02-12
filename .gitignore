@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# uploads and flows
+/public/uploads/*
+!/public/uploads/.gitkeep
+/public/flows/*
+!/public/flows/.gitkeep
