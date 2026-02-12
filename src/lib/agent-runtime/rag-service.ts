@@ -112,8 +112,7 @@ export async function retrieveContextWithScores(
     try {
         // Perform similarity search with scores
         const results = await vectorStore.similaritySearchWithScore(query, k);
-        console.log("🔍 Results:", results);
-
+        
         // Filter by threshold and format results
         const filteredResults = results
             .filter(([_doc, score]) => score >= similarityThreshold)

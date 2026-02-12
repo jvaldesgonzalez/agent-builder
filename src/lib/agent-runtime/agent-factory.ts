@@ -17,7 +17,7 @@ import { initializeVectorStore, retrieveContextWithScores } from "./rag-service"
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
 // System prompt constants
-const DEFAULT_SYSTEM_PROMPT = "";
+const DEFAULT_SYSTEM_PROMPT = "Do not end the conversation unless the user asks you to do so or you have collected all the information you need.";
 
 const TRANSFER_INSTRUCTIONS_PROMPT = "\n\n⚠️ CRITICAL TRANSFER RULE: When you need to transfer the conversation, call the appropriate transfer tool IMMEDIATELY and SILENTLY. DO NOT announce the transfer, DO NOT say things like 'I'm transferring you...', 'Let me connect you...', or 'I'll pass you to...'. Just execute the tool without any verbal announcement.";
 
@@ -30,6 +30,7 @@ const RAG_CONTEXT_MESSAGES = 3; // Number of recent messages to consider for RAG
 const AgentState = new StateSchema({
     messages: MessagesValue,
     currentAgent: z.string().default(""),
+    collectedInfo: z.record(z.string(), z.any()).default({}), // Store collected info by agent ID
 });
 
 // 2. Define Agent Configuration Structure
@@ -80,13 +81,14 @@ function getOutgoingEdges(nodeId: string, edges: AppEdge[]): AppEdge[] {
     return edges.filter(e => e.source === nodeId);
 }
 
-// 4. Implement Transfer Tool Creation
+// 4. Implement Transfer Tool Creation with Info Collection
 function createTransferTools(
     agentNode: AppNode,
     outgoingEdges: AppEdge[],
     nodes: AppNode[]
 ): TransferToolInfo[] {
     const tools: TransferToolInfo[] = [];
+    const agentData = agentNode.data as AgentNodeData;
     
     for (const edge of outgoingEdges) {
         const targetNode = nodes.find(n => n.id === edge.target);
@@ -96,6 +98,17 @@ function createTransferTools(
         if (targetNode.type === "tool") continue;
         
         if (targetNode.type === "agent") {
+            // Build schema dynamically based on info collection
+            const schemaFields: Record<string, z.ZodString> = {};
+            
+            if (agentData.infoCollection && agentData.infoCollection.length > 0) {
+                agentData.infoCollection.forEach(field => {
+                    // Convert field label to snake_case for parameter name
+                    const paramName = field.label.toLowerCase().replace(/\s+/g, '_');
+                    schemaFields[paramName] = z.string().describe(field.description);
+                });
+            }
+            
             // Transfer to another agent
             const targetData = targetNode.data as AgentNodeData;
             const targetLabel = targetData.label;
@@ -103,28 +116,47 @@ function createTransferTools(
             const description = edge.data?.conditionExpression || `Transfer conversation to ${targetLabel}`;
             
             const transferTool = tool(
-                () => {
+                (params) => {
+                    // Return collected info confirmation
+                    const collectedFields = Object.keys(params);
+                    if (collectedFields.length > 0) {
+                        return `Transferred to ${targetLabel}. Collected: ${collectedFields.join(", ")}`;
+                    }
                     return `Transferred successfully to ${targetLabel}`;
                 },
                 {
                     name: toolName,
                     description: description,
-                    schema: z.object({}), // No parameters needed
+                    schema: z.object(schemaFields), // Dynamic schema based on info collection
                 }
             );
             
             tools.push({ tool: transferTool, targetAgentId: edge.target });
         } else if (targetNode.type === "end") {
+            // Same logic for end_conversation tool
+            const schemaFields: Record<string, z.ZodString> = {};
+            
+            if (agentData.infoCollection && agentData.infoCollection.length > 0) {
+                agentData.infoCollection.forEach(field => {
+                    const paramName = field.label.toLowerCase().replace(/\s+/g, '_');
+                    schemaFields[paramName] = z.string().describe(field.description);
+                });
+            }
+            
             // Transfer to end (finish conversation)
             const description = (targetNode.data as any).description || "If the user says goodbye, end the conversation";
             const transferTool = tool(
-                () => {
+                (params) => {
+                    const collectedFields = Object.keys(params);
+                    if (collectedFields.length > 0) {
+                        return `Conversation ended. Collected: ${collectedFields.join(", ")}`;
+                    }
                     return "Conversation ended successfully";
                 },
                 {
                     name: "end_conversation",
                     description: description,
-                    schema: z.object({}),
+                    schema: z.object(schemaFields),
                 }
             );
             
@@ -410,9 +442,6 @@ function createDynamicAgentNode(
             new SystemMessage(systemPrompt),
             ...messagesToSend,
         ]);
-
-        // Add the current agent to the response
-        response.content += `\n\nCurrent agent: ${currentAgentId}`;
         
         return {
             messages: [response],
@@ -434,6 +463,7 @@ function createToolExecutionNode(
 
         const toolMessages: ToolMessage[] = [];
         let newCurrentAgent = state.currentAgent;
+        let newCollectedInfo = state.collectedInfo;
 
         // Get current agent config to access all tools (transfer + normal)
         const currentConfig = configMap[state.currentAgent];
@@ -477,7 +507,19 @@ function createToolExecutionNode(
                 if (targetAgentId) {
                     // This is a transfer tool - update currentAgent
                     newCurrentAgent = targetAgentId;
-                    console.log(`🔄 Transfer: ${toolCall.name} → ${targetAgentId}`);
+                    
+                    // Store collected info from tool parameters
+                    const collectedData = toolCall.args || {};
+                    if (Object.keys(collectedData).length > 0) {
+                        newCollectedInfo = {
+                            ...state.collectedInfo,
+                            [state.currentAgent]: collectedData, // Store by agent ID
+                        };
+                        console.log(`🔄 Transfer: ${toolCall.name} → ${targetAgentId}`);
+                        console.log(`📋 Collected info:`, collectedData);
+                    } else {
+                        console.log(`🔄 Transfer: ${toolCall.name} → ${targetAgentId}`);
+                    }
                 }
                 // If NOT a transfer tool, it's a normal tool - just execute and return result
             }
@@ -486,6 +528,7 @@ function createToolExecutionNode(
         return {
             messages: toolMessages,
             currentAgent: newCurrentAgent, // Only changes if transfer tool was called
+            collectedInfo: newCollectedInfo, // Update collected info
         };
     };
 }
