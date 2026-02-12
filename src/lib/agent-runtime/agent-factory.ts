@@ -7,12 +7,14 @@ import {
     END,
 } from "@langchain/langgraph";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { SystemMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
+import { SystemMessage, AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import * as z from "zod";
 import { AppNode, AppEdge, AgentNodeData, KnowledgeBase, InfoCollectionItem, Tool } from "@/types";
 import { memoryStore } from "./memory-store";
+import { initializeVectorStore, retrieveContextWithScores } from "./rag-service";
+import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
 // System prompt constants
 const DEFAULT_SYSTEM_PROMPT = "";
@@ -20,6 +22,9 @@ const DEFAULT_SYSTEM_PROMPT = "";
 const TRANSFER_INSTRUCTIONS_PROMPT = "\n\n⚠️ CRITICAL TRANSFER RULE: When you need to transfer the conversation, call the appropriate transfer tool IMMEDIATELY and SILENTLY. DO NOT announce the transfer, DO NOT say things like 'I'm transferring you...', 'Let me connect you...', or 'I'll pass you to...'. Just execute the tool without any verbal announcement.";
 
 const TRANSFER_CONTEXT_PROMPT = "[SYSTEM CONTEXT: You are now handling this conversation after a transfer from another agent. Speak to the user naturally, do not greet them and continue helping them. Do not mention the transfer.]";
+
+// RAG configuration constants
+const RAG_CONTEXT_MESSAGES = 3; // Number of recent messages to consider for RAG context
 
 // 1. Define Custom State Schema
 const AgentState = new StateSchema({
@@ -171,7 +176,149 @@ function buildAgentConfigMap(
     return { configMap, toolToAgentMap };
 }
 
-// 6. Create Single Agent Node with Dynamic Behavior
+// 6. Create RAG Node with Intelligent Question Detection
+function createRagNode(
+    configMap: AgentConfigMap,
+    vectorStoreCache: Record<string, MemoryVectorStore | null>
+): GraphNode<typeof AgentState> {
+    return async (state) => {
+        const currentAgentId = state.currentAgent;
+        const config = configMap[currentAgentId];
+        
+        if (!config) {
+            console.warn(`⚠️ Agent configuration not found for RAG: ${currentAgentId}`);
+            return { messages: [] };
+        }
+
+        // Check if agent has knowledge bases
+        if (!config.knowledgeBases || config.knowledgeBases.length === 0) {
+            console.log(`📚 Agent ${config.label} has no knowledge bases, skipping RAG`);
+            return { messages: [] };
+        }
+
+        // Get the last N messages for context
+        const recentMessages = state.messages.slice(-RAG_CONTEXT_MESSAGES);
+        
+        if (recentMessages.length === 0) {
+            console.log(`⚠️ No messages in state, skipping RAG`);
+            return { messages: [] };
+        }
+
+        // Get the last message - should be a HumanMessage
+        const lastMessage = state.messages.at(-1);
+        if (!lastMessage || !HumanMessage.isInstance(lastMessage)) {
+            console.log(`⚠️ Last message is not a HumanMessage, skipping RAG`);
+            return { messages: [] };
+        }
+
+        // Use LLM to detect if this is a meaningful question requiring RAG
+        const detectionModel = new ChatGoogleGenerativeAI({
+            model: "gemini-2.5-flash-lite",
+            temperature: 0,
+        });
+
+        // Define structured output schema
+        const QuestionDetectionSchema = z.object({
+            shouldRetrieve: z.boolean().describe("Whether this message requires knowledge base lookup"),
+            searchQuery: z.string().nullable().describe("The optimized search query to use, or null if no retrieval needed"),
+            reasoning: z.string().describe("Brief explanation of the decision"),
+        });
+
+        const detectionModelWithStructure = detectionModel.withStructuredOutput(QuestionDetectionSchema);
+
+        try {
+            // Detect if RAG is needed using recent conversation context
+            const detection = await detectionModelWithStructure.invoke([
+                new SystemMessage(
+                    `You are a question detector. Analyze the recent conversation and determine if the latest message requires looking up information from a knowledge base.
+                    
+Messages that SHOULD trigger retrieval:
+- Questions about products, services, pricing, specifications
+- Requests for information, details, or explanations
+- Queries about specific topics that might be in documentation
+- Follow-up questions that need more context
+
+Messages that SHOULD NOT trigger retrieval:
+- Greetings, farewells, thank you messages
+- General conversation, small talk
+- Simple acknowledgments or confirmations
+- Statements that don't request information
+
+If retrieval is needed, extract the key search terms from the conversation context and create an optimized search query.`
+                ),
+                ...recentMessages,
+            ]);
+
+            console.log(`🤔 RAG Detection: shouldRetrieve=${detection.shouldRetrieve}, query="${detection.searchQuery}", reason="${detection.reasoning}"`);
+
+            if (!detection.shouldRetrieve || !detection.searchQuery) {
+                console.log(`📋 No retrieval needed, passing through`);
+                return { messages: [] };
+            }
+
+            // Get or initialize vector store for this agent
+            const cacheKey = currentAgentId;
+            if (!vectorStoreCache[cacheKey]) {
+                console.log(`🔄 Initializing vector store for agent ${config.label}...`);
+                vectorStoreCache[cacheKey] = await initializeVectorStore(config.knowledgeBases);
+            }
+
+            const vectorStore = vectorStoreCache[cacheKey];
+            if (!vectorStore) {
+                console.warn(`⚠️ Vector store is null for agent ${config.label}`);
+                return { messages: [] };
+            }
+
+            // Retrieve context with similarity scores
+            const results = await retrieveContextWithScores(
+                vectorStore,
+                detection.searchQuery,
+                4, // Top K
+                0.5 // Similarity threshold
+            );
+
+            if (results.length === 0) {
+                console.log(`📋 No relevant context found above threshold`);
+                return { messages: [] };
+            }
+
+            // Augment the user message with retrieved context
+            const contextText = results
+                .map((r, idx) => `${r.content}`)
+                .join("\n\n");
+
+            const originalMessage = String(lastMessage.content);
+            const augmentedContent = `[Original Message]
+${originalMessage}
+
+[Relevant Information from Knowledge Base]
+${contextText}`;
+
+            console.log(`✨ Augmenting message with ${results.length} context chunks`);
+
+            // Create a new HumanMessage with augmented content
+            const augmentedMessage = new HumanMessage({
+                content: augmentedContent,
+                id: lastMessage.id,
+            });
+
+            // Replace the last message in the state
+            // We need to return the full messages array with the last one replaced
+            const updatedMessages = [
+                ...state.messages.slice(0, -1),
+                augmentedMessage,
+            ];
+
+            return { messages: updatedMessages };
+
+        } catch (error) {
+            console.error(`❌ Error in RAG node:`, error);
+            return { messages: [] };
+        }
+    };
+}
+
+// 7. Create Single Agent Node with Dynamic Behavior
 function createDynamicAgentNode(
     configMap: AgentConfigMap,
     toolToAgentMap: Record<string, string>
@@ -273,7 +420,7 @@ function createDynamicAgentNode(
     };
 }
 
-// 7. Create Tool Execution Node
+// 8. Create Tool Execution Node
 function createToolExecutionNode(
     configMap: AgentConfigMap,
     toolToAgentMap: Record<string, string>
@@ -343,7 +490,7 @@ function createToolExecutionNode(
     };
 }
 
-// 8. Create End Node
+// 9. Create End Node
 function createEndNode(): GraphNode<typeof AgentState> {
     return async (state) => {
         // Add a final system message
@@ -353,7 +500,7 @@ function createEndNode(): GraphNode<typeof AgentState> {
     };
 }
 
-// 9. Implement Conditional Routing
+// 10. Implement Conditional Routing
 const shouldContinueFromAgent = (state: typeof AgentState.State) => {
     const lastMessage = state.messages.at(-1);
 
@@ -375,7 +522,7 @@ const routeAfterTool = (state: typeof AgentState.State) => {
     return "agentNode"; // Loop back to agent with new currentAgent
 };
 
-// 10. Refactor createAgentGraph Method
+// 11. Refactor createAgentGraph Method
 export class AgentFactory {
     static async createAgentGraph(
         flowId: string,
@@ -388,22 +535,31 @@ export class AgentFactory {
         // 2. Build agent configuration map
         const { configMap, toolToAgentMap } = buildAgentConfigMap(nodes, edges);
         
-        // 3. Create the dynamic agent node
+        // 3. Create vector store cache for RAG
+        const vectorStoreCache: Record<string, MemoryVectorStore | null> = {};
+        
+        // 4. Create the RAG node
+        const ragNode = createRagNode(configMap, vectorStoreCache);
+        
+        // 5. Create the dynamic agent node
         const agentNode = createDynamicAgentNode(configMap, toolToAgentMap);
         
-        // 4. Create the tool execution node
+        // 6. Create the tool execution node
         const toolNode = createToolExecutionNode(configMap, toolToAgentMap);
         
-        // 5. Create the end node
+        // 7. Create the end node
         const endNode = createEndNode();
         
-        // 6. Build StateGraph
+        // 8. Build StateGraph with RAG
         const workflow = new StateGraph(AgentState)
+            .addNode("ragNode", ragNode)
             .addNode("agentNode", agentNode)
             .addNode("toolNode", toolNode)
             .addNode("endNode", endNode)
-            // Connect START to agent node
-            .addEdge(START, "agentNode")
+            // Connect START to RAG node first
+            .addEdge(START, "ragNode")
+            // RAG node always goes to agent node
+            .addEdge("ragNode", "agentNode")
             // Conditional routing from agent
             .addConditionalEdges("agentNode", shouldContinueFromAgent, ["toolNode", END])
             // Conditional routing from tool node
@@ -411,7 +567,7 @@ export class AgentFactory {
             // End node goes directly to END
             .addEdge("endNode", END);
         
-        // 7. Compile with checkpointer
+        // 9. Compile with checkpointer
         const graph = workflow.compile({ 
             checkpointer: memoryStore,
         });
