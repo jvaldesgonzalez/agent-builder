@@ -111,14 +111,14 @@ function createTransferTools(
             tools.push({ tool: transferTool, targetAgentId: edge.target });
         } else if (targetNode.type === "end") {
             // Transfer to end (finish conversation)
-            const endLabel = (targetNode.data as any).endLabel || "end";
+            const description = (targetNode.data as any).description || "If the user says goodbye, end the conversation";
             const transferTool = tool(
                 () => {
                     return "Conversation ended successfully";
                 },
                 {
                     name: "end_conversation",
-                    description: `End the conversation${endLabel ? ` (${endLabel})` : ""}`,
+                    description: description,
                     schema: z.object({}),
                 }
             );
@@ -173,7 +173,8 @@ function buildAgentConfigMap(
 
 // 6. Create Single Agent Node with Dynamic Behavior
 function createDynamicAgentNode(
-    configMap: AgentConfigMap
+    configMap: AgentConfigMap,
+    toolToAgentMap: Record<string, string>
 ): GraphNode<typeof AgentState> {
     let previousAgentId: string | null = null;
     
@@ -198,6 +199,48 @@ function createDynamicAgentNode(
         
         systemPrompt += config.systemPrompt;
         
+        // Filter messages to exclude transfer tool messages when just transferred
+        // This prevents the agent from responding to transfer confirmations
+        let messagesToSend = state.messages;
+        if (justTransferred) {
+            // Find the last AIMessage with tool_calls before this point
+            // and check if any of those tool calls were transfer tools
+            // If so, remove that AIMessage and the corresponding ToolMessages
+            const messagesToFilter: Set<number> = new Set();
+            
+            for (let i = state.messages.length - 1; i >= 0; i--) {
+                const msg = state.messages[i];
+                
+                // If we find a ToolMessage, check if it's from a transfer tool
+                if (ToolMessage.isInstance(msg)) {
+                    // Check if this tool message is from a transfer by looking at recent AI messages
+                    const toolCallId = msg.tool_call_id;
+                    
+                    // Look backwards for the AIMessage that created this tool call
+                    for (let j = i - 1; j >= 0; j--) {
+                        const prevMsg = state.messages[j];
+                        if (AIMessage.isInstance(prevMsg) && prevMsg.tool_calls) {
+                            const matchingToolCall = prevMsg.tool_calls.find(tc => tc.id === toolCallId);
+                            if (matchingToolCall) {
+                                // Check if this tool is a transfer tool
+                                if (toolToAgentMap[matchingToolCall.name]) {
+                                    // This is a transfer tool message, mark it for filtering
+                                    messagesToFilter.add(i);
+                                    messagesToFilter.add(j); // Also filter the AI message that called it
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Filter out marked messages
+            if (messagesToFilter.size > 0) {
+                messagesToSend = state.messages.filter((_, idx) => !messagesToFilter.has(idx));
+            }
+        }
+        
         // Create model
         const model = new ChatGoogleGenerativeAI({
             model: "gemini-2.5-flash",
@@ -218,8 +261,9 @@ function createDynamicAgentNode(
         // Call the model with system prompt and messages
         const response = await modelWithTools.invoke([
             new SystemMessage(systemPrompt),
-            ...state.messages,
+            ...messagesToSend,
         ]);
+
         // Add the current agent to the response
         response.content += `\n\nCurrent agent: ${currentAgentId}`;
         
@@ -345,7 +389,7 @@ export class AgentFactory {
         const { configMap, toolToAgentMap } = buildAgentConfigMap(nodes, edges);
         
         // 3. Create the dynamic agent node
-        const agentNode = createDynamicAgentNode(configMap);
+        const agentNode = createDynamicAgentNode(configMap, toolToAgentMap);
         
         // 4. Create the tool execution node
         const toolNode = createToolExecutionNode(configMap, toolToAgentMap);

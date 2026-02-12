@@ -167,7 +167,7 @@
       "data": {
         "label": "End Condition",
         "conditionType": "llm_condition",
-        "conditionExpression": "Si el usuario dice adios",
+        "conditionExpression": "Si el usuario dice adios o se despide",
         "overrideEndCondition": true
       }
     },
@@ -195,5 +195,5 @@
       }
     }
   ],
-  "updatedAt": "2026-02-11T21:15:42.672Z"
+  "updatedAt": "2026-02-12T00:04:22.011Z"
 }
