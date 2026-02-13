@@ -9,13 +9,14 @@ import KnowledgeBaseTab from "./tabs/KnowledgeBaseTab";
 import ToolsTab from "./tabs/ToolsTab";
 import InfoCollectionTab from "./tabs/InfoCollectionTab";
 import EdgesTab from "./tabs/EdgesTab";
+import ReturnTransitionTab from "./tabs/ReturnTransitionTab";
 import StartNodeView from "./views/StartNodeView";
 import GlobalSettingsView from "./views/GlobalSettingsView";
 import EndNodeView from "./views/EndNodeView";
 
 const agentTabs = ["General", "Knowledge Base", "Tools", "Info collection"];
 const toolDispatchTabs = ["Tools"];
-const edgeTabs = ["Edges"];
+const edgeTabs = ["Forward", "Return"];
 
 const nodeIcons: Record<string, React.ReactNode> = {
   start: <MessageSquare size={18} className="text-gray-500" />,
@@ -41,10 +42,10 @@ export default function ConfigPanel() {
   const isNodeSelected = selectedNodeId !== null;
   const isEdgeSelected = selectedEdgeId !== null;
 
-  // Auto-switch to Edges tab when edge is selected
+  // Auto-switch to Forward tab when edge is selected
   useEffect(() => {
     if (isEdgeSelected) {
-      setActiveTab("Edges");
+      setActiveTab("Forward");
     }
   }, [isEdgeSelected]);
 
@@ -87,7 +88,7 @@ export default function ConfigPanel() {
       : agentTabs;
 
   const currentTab = isEdgeSelected
-    ? "Edges"
+    ? (edgeTabs.includes(activeTab) ? activeTab : "Forward")
     : tabs.includes(activeTab)
       ? activeTab
       : tabs[0]; // Default to first available tab
@@ -114,8 +115,10 @@ export default function ConfigPanel() {
         return <ToolsTab />;
       case "Info collection":
         return <InfoCollectionTab />;
-      case "Edges":
+      case "Forward":
         return <EdgesTab />;
+      case "Return":
+        return <ReturnTransitionTab />;
       default:
         return null;
     }

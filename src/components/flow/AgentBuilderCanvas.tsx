@@ -83,7 +83,8 @@ function AgentBuilderCanvasInner() {
         connection.target,
         "New condition",
         conditionType,
-        targetNode?.type
+        targetNode?.type,
+        sourceNode?.type
       );
       addEdge(edge);
     },
@@ -149,7 +150,8 @@ function AgentBuilderCanvasInner() {
           newNode.id,
           conditionType === ConditionType.ToolResult ? "Success" : "New condition",
           conditionType,
-          AgentNodeType.Agent
+          AgentNodeType.Agent,
+          sourceNode?.type
         );
 
         addNode(newNode);

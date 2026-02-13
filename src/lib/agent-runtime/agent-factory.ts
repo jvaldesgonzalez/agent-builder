@@ -81,6 +81,13 @@ function getOutgoingEdges(nodeId: string, edges: AppEdge[]): AppEdge[] {
     return edges.filter(e => e.source === nodeId);
 }
 
+function getIncomingEdgesWithReturn(nodeId: string, edges: AppEdge[]): AppEdge[] {
+    return edges.filter(e =>
+        e.target === nodeId &&
+        e.data?.returnTransition?.enabled
+    );
+}
+
 // 4. Implement Transfer Tool Creation with Info Collection
 function createTransferTools(
     agentNode: AppNode,
@@ -167,6 +174,35 @@ function createTransferTools(
     return tools;
 }
 
+// 4b. Create return tools from incoming edges (no params for v1)
+function createReturnTools(
+    nodeId: string,
+    incomingEdgesWithReturn: AppEdge[],
+    nodes: AppNode[]
+): TransferToolInfo[] {
+    const tools: TransferToolInfo[] = [];
+    for (const edge of incomingEdgesWithReturn) {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        if (!sourceNode || sourceNode.type !== "agent") continue;
+        const sourceData = sourceNode.data as AgentNodeData;
+        const sourceLabel = sourceData.label;
+        const returnConfig = edge.data?.returnTransition;
+        if (!returnConfig?.enabled) continue;
+        const toolName = `return_to_${sourceLabel.toLowerCase().replace(/\s+/g, "_")}`;
+        const description = returnConfig.conditionExpression || `Transfer back to ${sourceLabel}`;
+        const returnTool = tool(
+            () => `Returned successfully to ${sourceLabel}`,
+            {
+                name: toolName,
+                description: description,
+                schema: z.object({}), // No params for v1
+            }
+        );
+        tools.push({ tool: returnTool, targetAgentId: edge.source });
+    }
+    return tools;
+}
+
 // 5. Build Agent Configuration Map
 function buildAgentConfigMap(
     nodes: AppNode[],
@@ -180,15 +216,26 @@ function buildAgentConfigMap(
         const agentData = agentNode.data as AgentNodeData;
         const outgoingEdges = getOutgoingEdges(agentNode.id, edges);
         const transferToolInfos = createTransferTools(agentNode, outgoingEdges, nodes);
+        const incomingWithReturn = getIncomingEdgesWithReturn(agentNode.id, edges);
+        const returnToolInfos = createReturnTools(agentNode.id, incomingWithReturn, nodes);
         
-        // Map tool names to target agent IDs
+        // Map tool names to target agent IDs (forward + return)
         transferToolInfos.forEach(info => {
             toolToAgentMap[info.tool.name] = info.targetAgentId;
         });
+        returnToolInfos.forEach(info => {
+            toolToAgentMap[info.tool.name] = info.targetAgentId;
+        });
+        
+        // Combine forward and return tools for this agent
+        const allTransferTools = [
+            ...transferToolInfos.map(i => i.tool),
+            ...returnToolInfos.map(i => i.tool),
+        ];
         
         // Build system prompt with transfer instructions
         const basePrompt = agentData.conversationGoal || "You are a helpful assistant.";
-        const transferInstructions = transferToolInfos.length > 0 
+        const transferInstructions = allTransferTools.length > 0 
             ? TRANSFER_INSTRUCTIONS_PROMPT
             : "";
         
@@ -196,7 +243,7 @@ function buildAgentConfigMap(
             id: agentNode.id,
             label: agentData.label,
             systemPrompt: basePrompt + transferInstructions,
-            transferTools: transferToolInfos.map(info => info.tool),
+            transferTools: allTransferTools,
             
             // For future use (not implemented yet):
             knowledgeBases: agentData.knowledgeBases || [],

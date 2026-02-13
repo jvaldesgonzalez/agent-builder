@@ -171,7 +171,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     }
 
     const label = edgeLabel || "New condition";
-    const newEdge = createEdge(parentId, newNode.id, label, conditionType, childType);
+    const newEdge = createEdge(parentId, newNode.id, label, conditionType, childType, parentType);
 
     set({
       nodes: [...nodes, newNode],

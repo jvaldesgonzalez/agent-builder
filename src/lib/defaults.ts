@@ -89,7 +89,8 @@ export function createEdge(
   target: string,
   label = "New condition",
   conditionType: ConditionType | null = ConditionType.LLMCondition,
-  targetNodeType?: string
+  targetNodeType?: string,
+  sourceNodeType?: string
 ): AppEdge {
   const edgeData: ConditionEdgeData = {
     label,
@@ -107,6 +108,19 @@ export function createEdge(
     edgeData.label = "End Condition";
     edgeData.conditionExpression = "End Condition";
     edgeData.overrideEndCondition = false;
+  }
+
+  // For agent→agent edges: optional default return transition config
+  if (
+    sourceNodeType === AgentNodeType.Agent &&
+    targetNodeType === AgentNodeType.Agent
+  ) {
+    edgeData.returnTransition = {
+      enabled: true,
+      label: "",
+      conditionExpression:
+        "When the user wants something different or changes their goal (e.g. not what they originally asked for).",
+    };
   }
 
   return {

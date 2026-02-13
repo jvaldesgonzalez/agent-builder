@@ -76,8 +76,8 @@ export async function initializeVectorStore(
 
     // Split documents into chunks
     const textSplitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 200,
+        chunkSize: 512,
+        chunkOverlap: 128,
     });
 
     const splitDocs = await textSplitter.splitDocuments(allDocuments);

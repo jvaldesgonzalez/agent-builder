@@ -94,6 +94,13 @@ export type AnyNodeData =
 
 export type AppNode = Node<AnyNodeData, string>;
 
+// ── Return transition (for agent→agent edges) ─────────────────────
+export interface ReturnTransitionConfig {
+  enabled: boolean;
+  label: string; // e.g. "Return to reception"
+  conditionExpression: string; // When B should transfer back to A
+}
+
 // ── Edge data ───────────────────────────────────────────────────
 export interface ConditionEdgeData {
   label: string;
@@ -101,6 +108,7 @@ export interface ConditionEdgeData {
   isSuccess?: boolean; // For tool result edges: true = success, false = failure
   conditionExpression?: string; // For LLM conditions: the condition logic
   overrideEndCondition?: boolean; // For edges to End nodes: true = show condition expression
+  returnTransition?: ReturnTransitionConfig; // For agent→agent edges: return path B → A
   [key: string]: unknown;
 }
 
