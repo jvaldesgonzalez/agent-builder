@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import { Wrench, Trash2 } from "lucide-react";
 import { useFlowStore } from "@/store/flowStore";
-import type { AgentNodeData, ToolNodeData, Tool, ToolParam } from "@/types";
-import AddToolModal from "../modals/AddToolModal";
+import type { AgentNodeData, ToolNodeData, Tool } from "@/types";
+import AddComposioToolModal from "../modals/AddComposioToolModal";
 
 export default function ToolsTab() {
   const selectedNodeId = useFlowStore((s) => s.selectedNodeId);
@@ -20,15 +20,8 @@ export default function ToolsTab() {
   const data = node.data as unknown as AgentNodeData | ToolNodeData;
   const tools = data.tools || [];
 
-  const handleAddTool = (name: string, description: string, code: string, params: ToolParam[]) => {
-    const newTool: Tool = {
-      id: `tool-${Date.now()}`,
-      name,
-      description,
-      code,
-      params,
-    };
-    addToolToNode(node.id, newTool);
+  const handleAddTool = (tool: Tool) => {
+    addToolToNode(node.id, tool);
   };
 
   const handleRemoveTool = (toolId: string) => {
@@ -37,12 +30,12 @@ export default function ToolsTab() {
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      {/* Add tool button */}
+      {/* Add Composio tool button */}
       <button
         onClick={() => setShowAddModal(true)}
         className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
       >
-        Add tool
+        Add tool from toolkit
       </button>
 
       {/* Tools list */}
@@ -63,6 +56,9 @@ export default function ToolsTab() {
                 <p className="mt-0.5 text-xs text-gray-400 line-clamp-2">
                   {tool.description || "No description"}
                 </p>
+                <p className="mt-0.5 text-xs text-gray-400">
+                  {tool.toolkitSlug} · {tool.toolSlug}
+                </p>
               </div>
               <button
                 onClick={() => handleRemoveTool(tool.id)}
@@ -81,14 +77,14 @@ export default function ToolsTab() {
           <Wrench size={32} className="text-gray-300" />
           <p className="text-sm text-gray-400">No tools added yet</p>
           <p className="text-xs text-gray-300">
-            Click "Add tool" to get started
+            Add tools from Composio toolkits (search, select, connect, then choose actions).
           </p>
         </div>
       )}
 
-      {/* Add Tool Modal */}
+      {/* Add Composio Tool Modal */}
       {showAddModal && (
-        <AddToolModal
+        <AddComposioToolModal
           onClose={() => setShowAddModal(false)}
           onSave={handleAddTool}
         />

@@ -12,6 +12,7 @@ import { tool } from "@langchain/core/tools";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import * as z from "zod";
 import { AppNode, AppEdge, AgentNodeData, KnowledgeBase, InfoCollectionItem, Tool } from "@/types";
+import { getComposio, getComposioUserId } from "@/lib/composio";
 import { memoryStore } from "./memory-store";
 import { initializeVectorStore, retrieveContextWithScores } from "./rag-service";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
@@ -39,11 +40,10 @@ interface AgentConfig {
     label: string;
     systemPrompt: string;
     transferTools: StructuredToolInterface[]; // Tools to transfer to other agents/END
-    
-    // For future implementation (not used yet):
+    composioTools?: StructuredToolInterface[]; // LangChain-wrapped Composio tools (from node.data.tools)
     knowledgeBases?: KnowledgeBase[];
     infoCollection?: InfoCollectionItem[];
-    tools?: Tool[]; // Internal custom tools (from node.data.tools)
+    tools?: Tool[]; // Composio tool refs (toolkitSlug, toolSlug) for display/serialization
 }
 
 type AgentConfigMap = Record<string, AgentConfig>;
@@ -105,18 +105,17 @@ function createTransferTools(
         if (targetNode.type === "tool") continue;
         
         if (targetNode.type === "agent") {
-            // Build schema dynamically based on info collection
-            const schemaFields: Record<string, z.ZodString> = {};
-            
+            // Build schema: required reason + optional info collection fields
+            const schemaFields: Record<string, z.ZodString> = {
+                reason: z.string().describe("Brief reason why you are transferring the conversation (e.g. what the user asked for or indicated)."),
+            };
             if (agentData.infoCollection && agentData.infoCollection.length > 0) {
                 agentData.infoCollection.forEach(field => {
-                    // Convert field label to snake_case for parameter name
                     const paramName = field.label.toLowerCase().replace(/\s+/g, '_');
                     schemaFields[paramName] = z.string().describe(field.description);
                 });
             }
             
-            // Transfer to another agent
             const targetData = targetNode.data as AgentNodeData;
             const targetLabel = targetData.label;
             const toolName = `transfer_to_${targetLabel.toLowerCase().replace(/\s+/g, "_")}`;
@@ -124,25 +123,23 @@ function createTransferTools(
             
             const transferTool = tool(
                 (params) => {
-                    // Return collected info confirmation
-                    const collectedFields = Object.keys(params);
-                    if (collectedFields.length > 0) {
-                        return `Transferred to ${targetLabel}. Collected: ${collectedFields.join(", ")}`;
-                    }
-                    return `Transferred successfully to ${targetLabel}`;
+                    const reason = (params as { reason?: string }).reason;
+                    const collectedFields = Object.keys(params).filter(k => k !== "reason");
+                    const parts = [reason ? `Reason: ${reason}` : null, collectedFields.length > 0 ? `Collected: ${collectedFields.join(", ")}` : null].filter(Boolean);
+                    return `Transferred to ${targetLabel}. ${parts.join(". ")}`;
                 },
                 {
                     name: toolName,
                     description: description,
-                    schema: z.object(schemaFields), // Dynamic schema based on info collection
+                    schema: z.object(schemaFields),
                 }
             );
             
             tools.push({ tool: transferTool, targetAgentId: edge.target });
         } else if (targetNode.type === "end") {
-            // Same logic for end_conversation tool
-            const schemaFields: Record<string, z.ZodString> = {};
-            
+            const schemaFields: Record<string, z.ZodString> = {
+                reason: z.string().describe("Brief reason why you are ending the conversation (e.g. user said goodbye, request completed)."),
+            };
             if (agentData.infoCollection && agentData.infoCollection.length > 0) {
                 agentData.infoCollection.forEach(field => {
                     const paramName = field.label.toLowerCase().replace(/\s+/g, '_');
@@ -150,15 +147,13 @@ function createTransferTools(
                 });
             }
             
-            // Transfer to end (finish conversation)
             const description = (targetNode.data as any).description || "If the user says goodbye, end the conversation";
             const transferTool = tool(
                 (params) => {
-                    const collectedFields = Object.keys(params);
-                    if (collectedFields.length > 0) {
-                        return `Conversation ended. Collected: ${collectedFields.join(", ")}`;
-                    }
-                    return "Conversation ended successfully";
+                    const reason = (params as { reason?: string }).reason;
+                    const collectedFields = Object.keys(params).filter(k => k !== "reason");
+                    const parts = [reason ? `Reason: ${reason}` : null, collectedFields.length > 0 ? `Collected: ${collectedFields.join(", ")}` : null].filter(Boolean);
+                    return `Conversation ended. ${parts.join(". ")}`;
                 },
                 {
                     name: "end_conversation",
@@ -174,7 +169,7 @@ function createTransferTools(
     return tools;
 }
 
-// 4b. Create return tools from incoming edges (no params for v1)
+// 4b. Create return tools from incoming edges (reason required)
 function createReturnTools(
     nodeId: string,
     incomingEdgesWithReturn: AppEdge[],
@@ -191,11 +186,16 @@ function createReturnTools(
         const toolName = `return_to_${sourceLabel.toLowerCase().replace(/\s+/g, "_")}`;
         const description = returnConfig.conditionExpression || `Transfer back to ${sourceLabel}`;
         const returnTool = tool(
-            () => `Returned successfully to ${sourceLabel}`,
+            (params) => {
+                const reason = (params as { reason?: string }).reason;
+                return reason ? `Returned to ${sourceLabel}. Reason: ${reason}` : `Returned successfully to ${sourceLabel}`;
+            },
             {
                 name: toolName,
                 description: description,
-                schema: z.object({}), // No params for v1
+                schema: z.object({
+                    reason: z.string().describe("Brief reason why you are returning the conversation (e.g. user wants something different or changed their goal)."),
+                }),
             }
         );
         tools.push({ tool: returnTool, targetAgentId: edge.source });
@@ -472,14 +472,11 @@ function createDynamicAgentNode(
             model: "gemini-2.5-flash",
         });
         
-        // Collect ALL tools for this agent (transfer + normal)
-        const allTools = [...config.transferTools];
-        
-        // TODO: Add normal tools in the future
-        // if (config.tools && config.tools.length > 0) {
-        //   const langchainTools = config.tools.map(convertToLangChainTool);
-        //   allTools.push(...langchainTools);
-        // }
+        // Collect ALL tools for this agent (transfer + Composio)
+        const allTools = [
+            ...config.transferTools,
+            ...(config.composioTools ?? []),
+        ];
         
         // Bind all tools to model
         const modelWithTools = model.bindTools(allTools);
@@ -518,20 +515,14 @@ function createToolExecutionNode(
             throw new Error(`Agent configuration not found: ${state.currentAgent}`);
         }
         
-        // Create tool lookup by name
-        // TODO: In the future, this will include both transferTools AND normal tools
+        // Create tool lookup by name (transfer + Composio)
         const toolsByName: Record<string, StructuredToolInterface> = {};
-        
-        // Add transfer tools
-        currentConfig.transferTools.forEach(tool => {
-            toolsByName[tool.name] = tool;
+        currentConfig.transferTools.forEach(t => {
+            toolsByName[t.name] = t;
         });
-        
-        // TODO: Add normal tools (not implemented yet)
-        // currentConfig.tools?.forEach(tool => {
-        //   const langchainTool = convertToLangChainTool(tool);
-        //   toolsByName[langchainTool.name] = langchainTool;
-        // });
+        (currentConfig.composioTools ?? []).forEach(t => {
+            toolsByName[t.name] = t;
+        });
 
         // Execute tool calls
         for (const toolCall of lastMessage.tool_calls ?? []) {
@@ -539,15 +530,11 @@ function createToolExecutionNode(
             
             if (tool) {
                 // Execute the tool
+                console.log(`🔄 Executing tool: ${toolCall.name}`);
                 const observation = await tool.invoke(toolCall);
+                console.log(`🔄 Observation: ${JSON.stringify(observation).slice(0, 100)}...`);
                 
-                // Create proper ToolMessage with tool_call_id
-                const toolMessage = new ToolMessage({
-                    content: String(observation),
-                    tool_call_id: toolCall.id!, // Critical: must match the tool call ID
-                });
-                
-                toolMessages.push(toolMessage);
+                toolMessages.push(observation);
                 
                 // Check if this is a TRANSFER tool (only transfer tools change currentAgent)
                 const targetAgentId = toolToAgentMap[toolCall.name];
@@ -624,6 +611,27 @@ export class AgentFactory {
         
         // 2. Build agent configuration map
         const { configMap, toolToAgentMap } = buildAgentConfigMap(nodes, edges);
+        
+        // 2b. Resolve Composio tools to LangChain tools for each agent
+        const userId = getComposioUserId();
+        const composio = getComposio();
+        for (const agentId of Object.keys(configMap)) {
+            const config = configMap[agentId];
+            if (config.tools && config.tools.length > 0) {
+                try {
+                    const toolSlugs = config.tools.filter((t) => t.toolSlug).map((t) => t.toolSlug);
+                    if (toolSlugs.length === 0) {
+                        config.composioTools = [];
+                    } else {
+                        const composioTools = await composio.tools.get(userId, { tools: toolSlugs });
+                        config.composioTools = Array.isArray(composioTools) ? composioTools : [];
+                    }
+                } catch (e) {
+                    console.warn(`Failed to load Composio tools for agent ${config.label}:`, e);
+                    config.composioTools = [];
+                }
+            }
+        }
         
         // 3. Create vector store cache for RAG
         const vectorStoreCache: Record<string, MemoryVectorStore | null> = {};

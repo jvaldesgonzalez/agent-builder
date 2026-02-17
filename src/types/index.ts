@@ -15,19 +15,15 @@ export enum ConditionType {
   ToolResult = "tool_result",
 }
 
-// ── Tool interface ──────────────────────────────────────────────
-export interface ToolParam {
-  id: string;
-  name: string;
-  description: string;
-}
-
+// ── Tool interface (Composio-only) ───────────────────────────────
 export interface Tool {
   id: string;
   name: string;
   description: string;
-  code: string; // JavaScript code for the tool
-  params: ToolParam[]; // Parameters the tool receives
+  /** Composio toolkit slug (e.g. "gmail", "github") */
+  toolkitSlug: string;
+  /** Composio action/tool slug (e.g. "GMAIL_SEND_EMAIL") */
+  toolSlug: string;
 }
 
 // ── Info Collection interface ───────────────────────────────────

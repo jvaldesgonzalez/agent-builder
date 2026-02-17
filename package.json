@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@composio/core": "^0.6.3",
+    "@composio/langchain": "^0.6.3",
     "@langchain/community": "^1.1.14",
     "@langchain/core": "1.1.22",
     "@langchain/google-genai": "^2.1.17",
