@@ -26,6 +26,7 @@ interface FlowState {
   selectedEdgeId: string | null;
   currentFlowId: string | null;
   currentFlowName: string;
+  baseSystemPrompt: string;
 
   // React Flow change handlers
   onNodesChange: (changes: NodeChange<AppNode>[]) => void;
@@ -75,9 +76,13 @@ interface FlowState {
   isFlowLoaded: boolean;
   setCurrentFlowId: (id: string) => void;
   updateFlowName: (name: string) => void;
+  updateBaseSystemPrompt: (prompt: string) => void;
   loadFlow: (id: string) => Promise<void>;
   saveFlow: () => void;
 }
+
+const DEFAULT_BASE_SYSTEM_PROMPT =
+  "Do not end the conversation unless the user asks you to do so or you have collected all the information you need.";
 
 // ── Helper: compute position below parent (centered) ─────────────
 function getChildPosition(
@@ -119,6 +124,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   selectedEdgeId: null,
   currentFlowId: null,
   currentFlowName: "New Agent",
+  baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
   isFlowLoaded: false,
 
   // ── React Flow handlers ─────────────────────────────────────
@@ -414,6 +420,11 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     get().saveFlow();
   },
 
+  updateBaseSystemPrompt: (prompt) => {
+    set({ baseSystemPrompt: prompt });
+    get().saveFlow();
+  },
+
   loadFlow: async (id) => {
     set({ isFlowLoaded: false }); // Reset loaded flag
     try {
@@ -424,6 +435,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           nodes: flowData.nodes || createInitialNodes(),
           edges: flowData.edges || createInitialEdges(),
           currentFlowName: flowData.name || "New Agent",
+          baseSystemPrompt: flowData.baseSystemPrompt ?? DEFAULT_BASE_SYSTEM_PROMPT,
           isFlowLoaded: true, // Mark as loaded
         });
       } else {
@@ -432,6 +444,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           nodes: createInitialNodes(),
           edges: createInitialEdges(),
           currentFlowName: "New Agent",
+          baseSystemPrompt: DEFAULT_BASE_SYSTEM_PROMPT,
           isFlowLoaded: true, // Mark as loaded (new flow)
         });
       }
@@ -444,7 +457,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   saveFlow: () => {
-    const { currentFlowId, currentFlowName, nodes, edges, isFlowLoaded } = get();
+    const { currentFlowId, currentFlowName, nodes, edges, baseSystemPrompt, isFlowLoaded } = get();
     if (!currentFlowId || !isFlowLoaded) return; // Prevent saving if not loaded 
 
     // Debounce save to avoid too many API calls
@@ -459,6 +472,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
             name: currentFlowName,
             nodes,
             edges,
+            baseSystemPrompt,
           }),
         });
       } catch (error) {

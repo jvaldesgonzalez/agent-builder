@@ -22,6 +22,8 @@ const menuItems = [
     label: "Tool dispatch",
     icon: Wrench,
     description: "Dispatch to different tools",
+    disabled: true,
+    tooltip: "Coming soon",
   },
   {
     type: AgentNodeType.End,
@@ -55,21 +57,36 @@ export default function AddNodeMenu({ parentId, onClose }: AddNodeMenuProps) {
       {menuItems.map((item) => (
         <button
           key={item.type}
+          disabled={item.disabled}
+          title={item.tooltip}
           onClick={(e) => {
+            if (item.disabled) return;
             e.stopPropagation();
             addChildNode(parentId, item.type);
             onClose();
           }}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-gray-50 transition-colors"
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+            item.disabled 
+              ? "opacity-50 cursor-not-allowed grayscale" 
+              : "hover:bg-gray-50 cursor-pointer"
+          }`}
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100">
-            <item.icon size={16} className="text-gray-600" />
+            <item.icon size={16} className={item.disabled ? "text-gray-400" : "text-gray-600"} />
           </div>
           <div>
-            <div className="text-sm font-medium text-gray-800">
+            <div className={`text-sm font-medium ${item.disabled ? "text-gray-400" : "text-gray-800"}`}>
               {item.label}
+              {item.disabled && (
+                <span className="ml-2 inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 ring-1 ring-inset ring-blue-700/10">
+                  Soon
+                </span>
+              )}
             </div>
-            <div className="text-xs text-gray-400">{item.description}</div>
+            <div className={`text-xs ${item.disabled ? "text-gray-300" : "text-gray-400"}`}>
+              {item.description}
+              {item.disabled && " (Coming soon)"}
+            </div>
           </div>
         </button>
       ))}

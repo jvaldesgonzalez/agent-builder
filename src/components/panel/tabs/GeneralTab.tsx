@@ -35,20 +35,20 @@ export default function GeneralTab() {
         />
       </div>
 
-      {/* LLM */}
+      {/* Thinking Level */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-sm font-medium text-gray-700">LLM</label>
-          <span className="text-xs text-gray-400">Using default</span>
+          <label className="text-sm font-medium text-gray-700">Thinking Level</label>
         </div>
         <select
-          value={data.llm ?? "GPT-4o"}
-          onChange={(e) => updateNodeData(node.id, { llm: e.target.value })}
+          value={data.thinkingLevel ?? "auto"}
+          onChange={(e) => updateNodeData(node.id, { thinkingLevel: e.target.value as any })}
           className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-300 focus:outline-none"
         >
-          <option value="GPT-4o">GPT-4o</option>
-          <option value="GPT-4o-mini">GPT-4o-mini</option>
-          <option value="Claude-3.5-Sonnet">Claude-3.5-Sonnet</option>
+          <option value="auto">Auto </option>
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
         </select>
       </div>
     </div>

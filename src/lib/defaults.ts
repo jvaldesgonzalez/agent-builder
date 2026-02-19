@@ -30,7 +30,7 @@ export function createDefaultAgentData(
     label,
     description: "Add a prompt to collect user information.",
     conversationGoal: "",
-    llm: "GPT-4o",
+    thinkingLevel: "auto",
     subItems: 0,
   };
 }

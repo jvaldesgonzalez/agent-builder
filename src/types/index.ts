@@ -44,6 +44,8 @@ export interface KnowledgeBase {
   fileSize?: number; // File size in bytes
 }
 
+export type ThinkingLevel = "low" | "medium" | "high" | "auto";
+
 // ── Node data payloads ──────────────────────────────────────────
 export interface StartNodeData {
   label: string;
@@ -54,7 +56,7 @@ export interface AgentNodeData {
   label: string;
   description: string;
   conversationGoal: string;
-  llm: string;
+  thinkingLevel?: ThinkingLevel;
   subItems: number;
   infoCollection?: InfoCollectionItem[];
   tools?: Tool[];

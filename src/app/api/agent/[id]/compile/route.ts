@@ -24,7 +24,12 @@ export async function POST(
         const flowData = JSON.parse(fileContent);
 
         // Verify we can build the graph
-        await AgentFactory.createAgentGraph(id, flowData.nodes, flowData.edges);
+        await AgentFactory.createAgentGraph(
+            id,
+            flowData.nodes,
+            flowData.edges,
+            flowData.baseSystemPrompt
+        );
 
         return NextResponse.json({ success: true, message: `Agent compiled successfully` });
     } catch (error) {

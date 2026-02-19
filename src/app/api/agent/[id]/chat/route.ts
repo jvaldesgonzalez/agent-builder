@@ -28,7 +28,8 @@ export async function POST(
         const { graph, initialAgentId } = await AgentFactory.createAgentGraph(
             id,
             flowData.nodes,
-            flowData.edges
+            flowData.edges,
+            flowData.baseSystemPrompt
         );
 
         // Create configuration with thread_id for persistence

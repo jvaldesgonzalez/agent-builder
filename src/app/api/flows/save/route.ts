@@ -6,7 +6,7 @@ import { existsSync } from "fs";
 export async function POST(request: NextRequest) {
     try {
         const flowData = await request.json();
-        const { id, name, nodes, edges } = flowData;
+        const { id, name, nodes, edges, baseSystemPrompt } = flowData;
 
         if (!id || !name) {
             return NextResponse.json(
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
             name,
             nodes: nodes || [],
             edges: edges || [],
+            baseSystemPrompt,
             updatedAt: new Date().toISOString(),
         };
 

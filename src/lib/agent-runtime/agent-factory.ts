@@ -11,11 +11,12 @@ import { BaseMessage, SystemMessage, AIMessage, ToolMessage, HumanMessage } from
 import { tool } from "@langchain/core/tools";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import * as z from "zod";
-import { AppNode, AppEdge, AgentNodeData, KnowledgeBase, InfoCollectionItem, Tool } from "@/types";
+import { AppNode, AppEdge, AgentNodeData, KnowledgeBase, InfoCollectionItem, Tool, ThinkingLevel } from "@/types";
 import { getComposio, getComposioUserId } from "@/lib/composio";
 import { memoryStore } from "./memory-store";
 import { initializeVectorStore, retrieveContextWithScores } from "./rag-service";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
+import { getModelForThinkingLevel } from "./model-factory";
 
 // System prompt constants
 const DEFAULT_SYSTEM_PROMPT = "Do not end the conversation unless the user asks you to do so or you have collected all the information you need.";
@@ -44,6 +45,7 @@ interface AgentConfig {
     knowledgeBases?: KnowledgeBase[];
     infoCollection?: InfoCollectionItem[];
     tools?: Tool[]; // Composio tool refs (toolkitSlug, toolSlug) for display/serialization
+    thinkingLevel?: ThinkingLevel;
 }
 
 type AgentConfigMap = Record<string, AgentConfig>;
@@ -263,6 +265,7 @@ function buildAgentConfigMap(
             knowledgeBases: agentData.knowledgeBases || [],
             infoCollection: agentData.infoCollection || [],
             tools: agentData.tools || [],
+            thinkingLevel: agentData.thinkingLevel,
         };
     }
     
@@ -420,7 +423,8 @@ ${contextText}`;
 // 7. Create Single Agent Node with Dynamic Behavior
 function createDynamicAgentNode(
     configMap: AgentConfigMap,
-    toolToAgentMap: Record<string, string>
+    toolToAgentMap: Record<string, string>,
+    baseSystemPrompt: string = DEFAULT_SYSTEM_PROMPT
 ): GraphNode<typeof AgentState> {
     let previousAgentId: string | null = null;
     
@@ -436,8 +440,8 @@ function createDynamicAgentNode(
         const justTransferred = previousAgentId !== null && previousAgentId !== currentAgentId;
         previousAgentId = currentAgentId;
         
-        // Build system prompt with default prompt, optional transfer context, and agent prompt
-        let systemPrompt = DEFAULT_SYSTEM_PROMPT;
+        // Build system prompt with base prompt, optional transfer context, and agent prompt
+        let systemPrompt = baseSystemPrompt || DEFAULT_SYSTEM_PROMPT;
         
         if (justTransferred) {
             systemPrompt += `${TRANSFER_CONTEXT_PROMPT}\n\n`;
@@ -487,10 +491,8 @@ function createDynamicAgentNode(
             }
         }
         
-        // Create model
-        const model = new ChatGoogleGenerativeAI({
-            model: "gemini-2.5-flash",
-        });
+        // Create model using thinking level factory
+        const model = getModelForThinkingLevel(config.thinkingLevel);
         
         // Collect ALL tools for this agent (transfer + Composio)
         const allTools = [
@@ -624,7 +626,8 @@ export class AgentFactory {
     static async createAgentGraph(
         flowId: string,
         nodes: AppNode[],
-        edges: AppEdge[]
+        edges: AppEdge[],
+        baseSystemPrompt?: string
     ) {
         // 1. Find the initial agent
         const initialAgentId = findInitialAgent(nodes, edges);
@@ -660,7 +663,11 @@ export class AgentFactory {
         const ragNode = createRagNode(configMap, vectorStoreCache);
         
         // 5. Create the dynamic agent node
-        const agentNode = createDynamicAgentNode(configMap, toolToAgentMap);
+        const agentNode = createDynamicAgentNode(
+            configMap,
+            toolToAgentMap,
+            baseSystemPrompt ?? DEFAULT_SYSTEM_PROMPT
+        );
         
         // 6. Create the tool execution node
         const toolNode = createToolExecutionNode(configMap, toolToAgentMap);
