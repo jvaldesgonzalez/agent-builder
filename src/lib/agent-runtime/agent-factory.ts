@@ -7,7 +7,7 @@ import {
     END,
 } from "@langchain/langgraph";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { SystemMessage, AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
+import { BaseMessage, SystemMessage, AIMessage, ToolMessage, HumanMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import * as z from "zod";
@@ -86,6 +86,20 @@ function getIncomingEdgesWithReturn(nodeId: string, edges: AppEdge[]): AppEdge[]
         e.target === nodeId &&
         e.data?.returnTransition?.enabled
     );
+}
+
+/**
+ * Returns only conversational messages (HumanMessage and AIMessage without tool_calls).
+ * Used by the RAG node so Gemini is never sent tool turns, avoiding "function response turn
+ * must come immediately after function call turn" errors.
+ */
+function getConversationMessagesWithoutToolTurns(messages: BaseMessage[]): (HumanMessage | AIMessage)[] {
+    return messages.filter((msg): msg is HumanMessage | AIMessage => {
+        if (HumanMessage.isInstance(msg)) return true;
+        if (ToolMessage.isInstance(msg)) return false;
+        if (AIMessage.isInstance(msg)) return !(msg as AIMessage).tool_calls?.length;
+        return false;
+    }) as (HumanMessage | AIMessage)[];
 }
 
 // 4. Implement Transfer Tool Creation with Info Collection
@@ -275,18 +289,24 @@ function createRagNode(
             return { messages: [] };
         }
 
-        // Get the last N messages for context
-        const recentMessages = state.messages.slice(-RAG_CONTEXT_MESSAGES);
-        
+        // Use only conversational turns (no tool calls/responses) so Gemini is not sent invalid turn order
+        const conversationOnly = getConversationMessagesWithoutToolTurns(state.messages);
+        const recentMessages = conversationOnly.slice(-RAG_CONTEXT_MESSAGES);
+
         if (recentMessages.length === 0) {
             console.log(`⚠️ No messages in state, skipping RAG`);
             return { messages: [] };
         }
 
-        // Get the last message - should be a HumanMessage
+        // Get the last message - should be a HumanMessage (full state and filtered context)
         const lastMessage = state.messages.at(-1);
         if (!lastMessage || !HumanMessage.isInstance(lastMessage)) {
             console.log(`⚠️ Last message is not a HumanMessage, skipping RAG`);
+            return { messages: [] };
+        }
+        const lastConversationMessage = recentMessages.at(-1);
+        if (!lastConversationMessage || !HumanMessage.isInstance(lastConversationMessage)) {
+            console.log(`⚠️ Last conversational message is not a HumanMessage, skipping RAG`);
             return { messages: [] };
         }
 
