@@ -21,7 +21,7 @@ export function getModelForThinkingLevel(level: ThinkingLevel = "auto") {
             modelName = "gemini-2.5-flash";
             break;
         case "high":
-            modelName = "gemini-3-pro";
+            modelName = "gemini-3-flash-preview";
             break;
         case "auto":
         default:

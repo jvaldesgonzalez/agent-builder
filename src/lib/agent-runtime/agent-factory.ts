@@ -23,7 +23,7 @@ const DEFAULT_SYSTEM_PROMPT = "Do not end the conversation unless the user asks 
 
 const TRANSFER_INSTRUCTIONS_PROMPT = "\n\n⚠️ CRITICAL TRANSFER RULE: When you need to transfer the conversation, call the appropriate transfer tool IMMEDIATELY and SILENTLY. DO NOT announce the transfer, DO NOT say things like 'I'm transferring you...', 'Let me connect you...', or 'I'll pass you to...'. Just execute the tool without any verbal announcement.";
 
-const TRANSFER_CONTEXT_PROMPT = "[SYSTEM CONTEXT: You are now handling this conversation after a transfer from another agent. Speak to the user naturally, do not greet them and continue helping them. Do not mention the transfer.]";
+const TRANSFER_CONTEXT_PROMPT = "[SYSTEM CONTEXT: You are now handling this conversation after a transfer from another agent. Speak to the user naturally, do not greet them and continue helping them. Do not mention the transfer. Do not transfer back to the previous agent.]";
 
 // RAG configuration constants
 const RAG_CONTEXT_MESSAGES = 3; // Number of recent messages to consider for RAG context
@@ -301,12 +301,7 @@ function createRagNode(
             return { messages: [] };
         }
 
-        // Get the last message - should be a HumanMessage (full state and filtered context)
-        const lastMessage = state.messages.at(-1);
-        if (!lastMessage || !HumanMessage.isInstance(lastMessage)) {
-            console.log(`⚠️ Last message is not a HumanMessage, skipping RAG`);
-            return { messages: [] };
-        }
+        // Get the last message - should be a HumanMessage (filtered context)
         const lastConversationMessage = recentMessages.at(-1);
         if (!lastConversationMessage || !HumanMessage.isInstance(lastConversationMessage)) {
             console.log(`⚠️ Last conversational message is not a HumanMessage, skipping RAG`);
@@ -334,19 +329,20 @@ function createRagNode(
                 new SystemMessage(
                     `You are a question detector. Analyze the recent conversation and determine if the latest message requires looking up information from a knowledge base.
                     
+Assume the knowledge base contains broad information about the business, products, services, operations, and any other relevant documentation.
+
 Messages that SHOULD trigger retrieval:
-- Questions about products, services, pricing, specifications
+- Any question or inquiry about the business, products, services, or operations
 - Requests for information, details, or explanations
-- Queries about specific topics that might be in documentation
+- Queries about specific topics that might be in documentation (e.g., hours, location, policies, specifications, etc.)
 - Follow-up questions that need more context
 
 Messages that SHOULD NOT trigger retrieval:
-- Greetings, farewells, thank you messages
-- General conversation, small talk
-- Simple acknowledgments or confirmations
-- Statements that don't request information
+- Pure greetings, farewells, or thank you messages (without follow-up questions)
+- Simple acknowledgments like "ok", "yes", "no"
+- Statements that clearly don't request any information
 
-If retrieval is needed, extract the key search terms from the conversation context and create an optimized search query.`
+When in doubt, it is better to retrieve than to skip. If retrieval is needed, extract the key search terms from the conversation context and create an optimized search query.`
                 ),
                 ...recentMessages,
             ]);
@@ -389,7 +385,7 @@ If retrieval is needed, extract the key search terms from the conversation conte
                 .map((r, idx) => `${r.content}`)
                 .join("\n\n");
 
-            const originalMessage = String(lastMessage.content);
+            const originalMessage = String(lastConversationMessage.content);
             const augmentedContent = `[Original Message]
 ${originalMessage}
 
@@ -401,7 +397,7 @@ ${contextText}`;
             // Create a new HumanMessage with augmented content
             const augmentedMessage = new HumanMessage({
                 content: augmentedContent,
-                id: lastMessage.id,
+                id: lastConversationMessage.id,
             });
 
             // Replace the last message in the state
@@ -600,7 +596,7 @@ function createEndNode(): GraphNode<typeof AgentState> {
 }
 
 // 10. Implement Conditional Routing
-const shouldContinueFromAgent = (state: typeof AgentState.State) => {
+const shouldContinueFromAgent = (state: any) => {
     const lastMessage = state.messages.at(-1);
 
     if (!lastMessage || !AIMessage.isInstance(lastMessage)) {
@@ -612,13 +608,6 @@ const shouldContinueFromAgent = (state: typeof AgentState.State) => {
     }
 
     return END;
-};
-
-const routeAfterTool = (state: typeof AgentState.State) => {
-    if (state.currentAgent === "END") {
-        return "endNode"; // Route to custom end node instead of END directly
-    }
-    return "agentNode"; // Loop back to agent with new currentAgent
 };
 
 // 11. Refactor createAgentGraph Method
@@ -634,7 +623,30 @@ export class AgentFactory {
         
         // 2. Build agent configuration map
         const { configMap, toolToAgentMap } = buildAgentConfigMap(nodes, edges);
-        
+
+        // Define routing logic that needs access to toolToAgentMap
+        const routeAfterTool = (state: any) => {
+            if (state.currentAgent === "END") {
+                return "endNode";
+            }
+
+            // Check if any tool call in the last AI message was a transfer
+            const lastAiMessage = [...state.messages]
+                .reverse()
+                .find((msg) => AIMessage.isInstance(msg) && (msg as AIMessage).tool_calls?.length);
+
+            const hasTransfer =
+                lastAiMessage &&
+                (lastAiMessage as AIMessage).tool_calls?.some((tc) => toolToAgentMap[tc.name]);
+
+            if (hasTransfer) {
+                console.log("🔄 Transfer detected, routing to RAG node");
+                return "ragNode";
+            }
+
+            return "agentNode";
+        };
+
         // 2b. Resolve Composio tools to LangChain tools for each agent
         const userId = getComposioUserId();
         const composio = getComposio();
@@ -688,7 +700,7 @@ export class AgentFactory {
             // Conditional routing from agent
             .addConditionalEdges("agentNode", shouldContinueFromAgent, ["toolNode", END])
             // Conditional routing from tool node
-            .addConditionalEdges("toolNode", routeAfterTool, ["agentNode", "endNode"])
+            .addConditionalEdges("toolNode", routeAfterTool, ["ragNode","agentNode", "endNode"])
             // End node goes directly to END
             .addEdge("endNode", END);
         

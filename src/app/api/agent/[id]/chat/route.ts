@@ -56,7 +56,12 @@ export async function POST(
             ? lastMessage.content
             : JSON.stringify(lastMessage.content);
 
-        return NextResponse.json({ message: responseText });
+        // Find the label of the current agent
+        const currentAgentId = result.currentAgent;
+        const agentNode = flowData.nodes.find((n: any) => n.id === currentAgentId);
+        const agentLabel = agentNode?.data?.label || currentAgentId;
+
+        return NextResponse.json({ message: `[${agentLabel}]\n\n${responseText}` });
     } catch (error) {
         console.error("Chat error:", error);
         return NextResponse.json(
