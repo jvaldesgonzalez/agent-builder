@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Clock, FileText, Trash2 } from "lucide-react";
+import { Plus, Clock, FileText, Trash2, Zap } from "lucide-react";
 
 interface Flow {
   id: string;
@@ -86,13 +86,22 @@ export default function Home() {
                 Create and manage your AI agents
               </p>
             </div>
-            <button
-              onClick={handleCreateNew}
-              className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
-            >
-              <Plus size={18} />
-              New Agent
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push("/skill-builder")}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <Zap size={18} />
+                Skill Agents
+              </button>
+              <button
+                onClick={handleCreateNew}
+                className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+              >
+                <Plus size={18} />
+                New Agent
+              </button>
+            </div>
           </div>
         </div>
       </div>
