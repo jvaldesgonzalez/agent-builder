@@ -45,3 +45,5 @@ next-env.d.ts
 !/public/uploads/.gitkeep
 /public/flows/*
 !/public/flows/.gitkeep
+
+/src/generated/prisma

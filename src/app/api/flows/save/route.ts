@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
     try {
@@ -15,25 +13,22 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Create flows directory if it doesn't exist
-        const flowsDir = path.join(process.cwd(), "public", "flows");
-        if (!existsSync(flowsDir)) {
-            await mkdir(flowsDir, { recursive: true });
-        }
-
-        // Prepare flow data with metadata
-        const fullFlowData = {
-            id,
-            name,
-            nodes: nodes || [],
-            edges: edges || [],
-            baseSystemPrompt,
-            updatedAt: new Date().toISOString(),
-        };
-
-        // Save to file
-        const filePath = path.join(flowsDir, `${id}.json`);
-        await writeFile(filePath, JSON.stringify(fullFlowData, null, 2));
+        await prisma.flow.upsert({
+            where: { id },
+            create: {
+                id,
+                name,
+                nodes: nodes ?? [],
+                edges: edges ?? [],
+                baseSystemPrompt: baseSystemPrompt ?? null,
+            },
+            update: {
+                name,
+                nodes: nodes ?? [],
+                edges: edges ?? [],
+                baseSystemPrompt: baseSystemPrompt ?? null,
+            },
+        });
 
         return NextResponse.json({ success: true, flowId: id });
     } catch (error) {

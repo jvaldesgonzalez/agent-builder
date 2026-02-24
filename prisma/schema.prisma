@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Flow {
+  id                String   @id
+  name              String
+  nodes             Json     @default("[]")
+  edges             Json     @default("[]")
+  baseSystemPrompt  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model KnowledgeBase {
+  id          String   @id
+  name        String
+  description String?
+  type        String   // e.g. 'pdf', 'csv', 'txt'
+  content     String   @db.Text
+  fileSize    Int
+  uploadDate  DateTime
+}

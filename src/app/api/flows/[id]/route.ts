@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, unlink } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(
     request: NextRequest,
@@ -9,18 +7,26 @@ export async function GET(
 ) {
     try {
         const { id } = await params;
-        const flowsDir = path.join(process.cwd(), "public", "flows");
-        const filePath = path.join(flowsDir, `${id}.json`);
 
-        if (!existsSync(filePath)) {
+        const flow = await prisma.flow.findUnique({
+            where: { id },
+        });
+
+        if (!flow) {
             return NextResponse.json(
                 { error: "Flow not found" },
                 { status: 404 }
             );
         }
 
-        const fileContent = await readFile(filePath, "utf8");
-        const flowData = JSON.parse(fileContent);
+        const flowData = {
+            id: flow.id,
+            name: flow.name,
+            nodes: flow.nodes as unknown[],
+            edges: flow.edges as unknown[],
+            baseSystemPrompt: flow.baseSystemPrompt ?? undefined,
+            updatedAt: flow.updatedAt.toISOString(),
+        };
 
         return NextResponse.json(flowData);
     } catch (error) {
@@ -38,17 +44,21 @@ export async function DELETE(
 ) {
     try {
         const { id } = await params;
-        const flowsDir = path.join(process.cwd(), "public", "flows");
-        const filePath = path.join(flowsDir, `${id}.json`);
 
-        if (!existsSync(filePath)) {
+        const flow = await prisma.flow.findUnique({
+            where: { id },
+        });
+
+        if (!flow) {
             return NextResponse.json(
                 { error: "Flow not found" },
                 { status: 404 }
             );
         }
 
-        await unlink(filePath);
+        await prisma.flow.delete({
+            where: { id },
+        });
 
         return NextResponse.json({ success: true });
     } catch (error) {

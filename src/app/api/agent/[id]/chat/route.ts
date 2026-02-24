@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import path from "path";
-import { existsSync } from "fs";
+import { prisma } from "@/lib/prisma";
 import { AgentFactory } from "@/lib/agent-runtime/agent-factory";
 import { HumanMessage } from "@langchain/core/messages";
 
@@ -14,21 +12,25 @@ export async function POST(
         const body = await request.json();
         const { message, sessionId } = body;
 
-        const flowsDir = path.join(process.cwd(), "public", "flows");
-        const filePath = path.join(flowsDir, `${id}.json`);
+        const flow = await prisma.flow.findUnique({
+            where: { id },
+        });
 
-        if (!existsSync(filePath)) {
+        if (!flow) {
             return NextResponse.json({ error: "Flow not found" }, { status: 404 });
         }
 
-        const fileContent = await readFile(filePath, "utf8");
-        const flowData = JSON.parse(fileContent);
+        const flowData = {
+            nodes: flow.nodes as unknown[],
+            edges: flow.edges as unknown[],
+            baseSystemPrompt: flow.baseSystemPrompt ?? undefined,
+        };
 
         // Rebuild the graph and get the initial agent ID
         const { graph, initialAgentId } = await AgentFactory.createAgentGraph(
             id,
-            flowData.nodes,
-            flowData.edges,
+            flowData.nodes as Parameters<typeof AgentFactory.createAgentGraph>[1],
+            flowData.edges as Parameters<typeof AgentFactory.createAgentGraph>[2],
             flowData.baseSystemPrompt
         );
 
@@ -58,7 +60,8 @@ export async function POST(
 
         // Find the label of the current agent
         const currentAgentId = result.currentAgent;
-        const agentNode = flowData.nodes.find((n: any) => n.id === currentAgentId);
+        const nodes = flow.nodes as Array<{ id: string; data?: { label?: string } }>;
+        const agentNode = nodes.find((n) => n.id === currentAgentId);
         const agentLabel = agentNode?.data?.label || currentAgentId;
 
         return NextResponse.json({ message: `[${agentLabel}]\n\n${responseText}` });
