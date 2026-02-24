@@ -20,8 +20,8 @@ export async function POST(
         // Verify we can build the graph
         await AgentFactory.createAgentGraph(
             id,
-            flow.nodes as unknown[],
-            flow.edges as unknown[],
+            flow.nodes as unknown[] as any,
+            flow.edges as unknown[] as any,
             flow.baseSystemPrompt ?? undefined
         );
 
