@@ -119,7 +119,7 @@ export function createEdge(
       enabled: true,
       label: "",
       conditionExpression:
-        "When the user wants something different or changes their goal (e.g. not what they originally asked for).",
+        "Last resort only: when you cannot help the user and no other agent is suitable to transfer to; transfer back to the previous agent.",
     };
   }
 

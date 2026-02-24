@@ -21,7 +21,7 @@ import { getModelForThinkingLevel } from "./model-factory";
 // System prompt constants
 const DEFAULT_SYSTEM_PROMPT = "Do not end the conversation unless the user asks you to do so or you have collected all the information you need.";
 
-const TRANSFER_INSTRUCTIONS_PROMPT = "\n\n⚠️ CRITICAL TRANSFER RULE: When you need to transfer the conversation, call the appropriate transfer tool IMMEDIATELY and SILENTLY. DO NOT announce the transfer, DO NOT say things like 'I'm transferring you...', 'Let me connect you...', or 'I'll pass you to...'. Just execute the tool without any verbal announcement.";
+const TRANSFER_INSTRUCTIONS_PROMPT = "\n\n⚠️ CRITICAL TRANSFER RULE: When you need to transfer the conversation, call the appropriate transfer tool IMMEDIATELY and SILENTLY. DO NOT announce the transfer, DO NOT say things like 'I'm transferring you...', 'Let me connect you...', or 'I'll pass you to...'. Just execute the tool without any verbal announcement. Prefer transferring to another agent who can help; use return-to-previous-agent only as a last resort when you cannot help the user and no other agent is suitable.";
 
 const TRANSFER_CONTEXT_PROMPT = "[SYSTEM CONTEXT: You are now handling this conversation after a transfer from another agent. Speak to the user naturally, do not greet them and continue helping them. Do not mention the transfer. Do not transfer back to the previous agent.]";
 
@@ -88,6 +88,24 @@ function getIncomingEdgesWithReturn(nodeId: string, edges: AppEdge[]): AppEdge[]
         e.target === nodeId &&
         e.data?.returnTransition?.enabled
     );
+}
+
+/**
+ * Returns direct parent agent nodes (non-recursive). Parents are agents that have an
+ * outgoing edge targeting the given agent node.
+ */
+function getParentAgents(agentNodeId: string, edges: AppEdge[], nodes: AppNode[]): AppNode[] {
+    const incomingFromAgents = edges.filter(
+        e => e.target === agentNodeId
+    );
+    const parentNodes: AppNode[] = [];
+    for (const e of incomingFromAgents) {
+        const source = nodes.find(n => n.id === e.source);
+        if (source?.type === "agent") {
+            parentNodes.push(source);
+        }
+    }
+    return parentNodes;
 }
 
 /**
@@ -200,7 +218,8 @@ function createReturnTools(
         const returnConfig = edge.data?.returnTransition;
         if (!returnConfig?.enabled) continue;
         const toolName = `return_to_${sourceLabel.toLowerCase().replace(/\s+/g, "_")}`;
-        const description = returnConfig.conditionExpression || `Transfer back to ${sourceLabel}`;
+        const defaultReturnDescription = `Last resort only: use when you cannot help the user AND no other agent is suitable to transfer to. Transfer conversation back to ${sourceLabel}.`;
+        const description = returnConfig.conditionExpression || defaultReturnDescription;
         const returnTool = tool(
             (params) => {
                 const reason = (params as { reason?: string }).reason;
@@ -210,7 +229,7 @@ function createReturnTools(
                 name: toolName,
                 description: description,
                 schema: z.object({
-                    reason: z.string().describe("Brief reason why you are returning the conversation (e.g. user wants something different or changed their goal)."),
+                    reason: z.string().describe("Brief reason why you are returning (e.g. no other agent can help and you cannot answer; use only when transfer/answer is not possible)."),
                 }),
             }
         );
@@ -232,6 +251,21 @@ function buildAgentConfigMap(
         const agentData = agentNode.data as AgentNodeData;
         const outgoingEdges = getOutgoingEdges(agentNode.id, edges);
         const transferToolInfos = createTransferTools(agentNode, outgoingEdges, nodes);
+
+        // Inherit transfer tools from direct parent(s), excluding transfer to self (non-recursive)
+        const parentAgents = getParentAgents(agentNode.id, edges, nodes);
+        const existingToolNames = new Set(transferToolInfos.map(i => i.tool.name));
+        for (const parent of parentAgents) {
+            const parentOutgoing = getOutgoingEdges(parent.id, edges);
+            const parentTransferInfos = createTransferTools(parent, parentOutgoing, nodes);
+            for (const info of parentTransferInfos) {
+                if (info.targetAgentId === agentNode.id) continue; // exclude transfer to self
+                if (existingToolNames.has(info.tool.name)) continue; // avoid duplicates
+                existingToolNames.add(info.tool.name);
+                transferToolInfos.push(info);
+            }
+        }
+
         const incomingWithReturn = getIncomingEdgesWithReturn(agentNode.id, edges);
         const returnToolInfos = createReturnTools(agentNode.id, incomingWithReturn, nodes);
         
