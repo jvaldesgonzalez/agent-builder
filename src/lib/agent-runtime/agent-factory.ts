@@ -14,7 +14,7 @@ import {
   ToolMessage,
   HumanMessage,
 } from "@langchain/core/messages";
-import { tool } from "@langchain/core/tools";
+import { tool, DynamicStructuredTool } from "@langchain/core/tools";
 import { StructuredToolInterface } from "@langchain/core/tools";
 import * as z from "zod";
 import {
@@ -196,7 +196,7 @@ function createTransferTools(
 
     if (targetNode.type === "agent") {
       // Build schema: required reason + optional info collection fields
-      const schemaFields: Record<string, z.ZodString> = {
+      const schemaFields: Record<string, z.ZodType<any>> = {
         reason: z
           .string()
           .describe(
@@ -206,7 +206,7 @@ function createTransferTools(
       if (agentData.infoCollection && agentData.infoCollection.length > 0) {
         agentData.infoCollection.forEach((field) => {
           const paramName = sanitizeToolName(field.label);
-          schemaFields[paramName] = z.string().describe(field.description);
+          schemaFields[paramName] = z.union([z.string(), z.number(), z.boolean()]).describe(field.description);
         });
       }
 
@@ -240,7 +240,7 @@ function createTransferTools(
 
       tools.push({ tool: transferTool, targetAgentId: edge.target });
     } else if (targetNode.type === "end") {
-      const schemaFields: Record<string, z.ZodString> = {
+      const schemaFields: Record<string, z.ZodType<any>> = {
         reason: z
           .string()
           .describe(
@@ -250,7 +250,7 @@ function createTransferTools(
       if (agentData.infoCollection && agentData.infoCollection.length > 0) {
         agentData.infoCollection.forEach((field) => {
           const paramName = sanitizeToolName(field.label);
-          schemaFields[paramName] = z.string().describe(field.description);
+          schemaFields[paramName] = z.union([z.string(), z.number(), z.boolean()]).describe(field.description);
         });
       }
 
@@ -714,12 +714,90 @@ function createToolExecutionNode(
       if (tool) {
         // Execute the tool
         console.log(`🔄 Executing tool: ${toolCall.name}`);
-        const observation = await tool.invoke(toolCall);
-        console.log(
-          `🔄 Observation: ${JSON.stringify(observation).slice(0, 100)}...`,
-        );
 
-        toolMessages.push(observation);
+        // Debug Schema: unwrap ZodOptional/ZodDefault to get inner type
+        try {
+          const schema = (tool as any).schema;
+          const unwrap = (s: any): any =>
+            s?._def?.typeName === "ZodOptional" || s?._def?.typeName === "ZodDefault"
+              ? unwrap(s._def.innerType)
+              : s;
+
+          if (schema) {
+            console.log(`🔍 Schema for ${toolCall.name}:`);
+            if (schema._def?.typeName === "ZodObject") {
+              const shape = schema.shape;
+              for (const key of Object.keys(shape)) {
+                const fieldSchema = unwrap(shape[key]);
+                const type = fieldSchema?._def?.typeName;
+                console.log(`  - ${key}: ${type}`);
+                if (key === "attendees" && type === "ZodArray") {
+                  const itemType = unwrap(fieldSchema._def?.type);
+                  console.log(`    - Item type: ${itemType?._def?.typeName}`);
+                  const collectObjectKeys = (s: any): string[] => {
+                    if (!s) return [];
+                    const t = unwrap(s);
+                    if (t?._def?.typeName === "ZodObject")
+                      return Object.keys(t.shape || {});
+                    if (t?._def?.typeName === "ZodIntersection") {
+                      const left = collectObjectKeys(t._def?.left);
+                      const right = collectObjectKeys(t._def?.right);
+                      return [...new Set([...left, ...right])];
+                    }
+                    if (t?._def?.typeName === "ZodUnion") {
+                      return (t._def?.options || []).flatMap(
+                        (opt: any) => collectObjectKeys(opt) || [],
+                      );
+                    }
+                    return [];
+                  };
+                  const keys = collectObjectKeys(itemType);
+                  if (keys.length) {
+                    console.log(`    - Attendee object keys:`, keys);
+                  }
+                }
+              }
+            } else {
+              console.log(`  Schema type: ${schema._def?.typeName}`);
+            }
+          }
+        } catch (e) {
+          console.log("Error printing schema", e);
+        }
+
+        console.log(`🛠️ Tool args:`, toolCall.args);
+        try {
+          const observation = await tool.invoke(toolCall.args);
+          console.log(
+            `🔄 Observation: ${JSON.stringify(observation).slice(0, 100)}...`,
+          );
+
+          // Ensure we push a ToolMessage
+          if (ToolMessage.isInstance(observation)) {
+            toolMessages.push(observation);
+          } else {
+            toolMessages.push(
+              new ToolMessage({
+                tool_call_id: toolCall.id || "",
+                content:
+                  typeof observation === "string"
+                    ? observation
+                    : JSON.stringify(observation),
+                name: toolCall.name,
+              }),
+            );
+          }
+        } catch (error) {
+          console.error(`❌ Tool execution failed for ${toolCall.name}:`, error);
+          // Return error as tool output so agent knows it failed and can retry
+          toolMessages.push(
+            new ToolMessage({
+              tool_call_id: toolCall.id || "",
+              content: `Error: ${error} Please check the tool arguments and try again.`,
+              name: toolCall.name,
+            }),
+          );
+        }
 
         // Check if this is a TRANSFER tool (only transfer tools change currentAgent)
         const targetAgentId = toolToAgentMap[toolCall.name];
@@ -834,12 +912,25 @@ export class AgentFactory {
           if (toolSlugs.length === 0) {
             config.composioTools = [];
           } else {
-            const composioTools = await composio.tools.get(userId, {
+            const rawComposioTools = await composio.tools.get(userId, {
               tools: toolSlugs,
             });
-            config.composioTools = Array.isArray(composioTools)
-              ? composioTools
-              : [];
+            // Wrap Composio tools with a permissive schema so Zod doesn't
+            // reject valid args that don't match the overly-strict generated schema.
+            // The Composio API validates inputs server-side.
+            config.composioTools = (
+              Array.isArray(rawComposioTools) ? rawComposioTools : []
+            ).map(
+              (t) =>
+                new DynamicStructuredTool({
+                  name: t.name,
+                  description: t.description,
+                  schema: z.object({}).passthrough(),
+                  func: async (args: Record<string, unknown>) => {
+                    return (t as DynamicStructuredTool).func(args, undefined);
+                  },
+                }),
+            );
           }
         } catch (e) {
           console.warn(

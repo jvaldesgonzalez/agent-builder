@@ -10,11 +10,10 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@composio/core": "^0.6.3",
-    "@composio/langchain": "^0.6.3",
+    "@composio/core": "^0.6.4",
+    "@composio/langchain": "^0.6.4",
     "@langchain/classic": "^1.0.20",
-    "@langchain/community": "^1.1.14",
-    "@langchain/core": "1.1.22",
+    "@langchain/core": "1.1.30",
     "@langchain/google-genai": "^2.1.17",
     "@langchain/langgraph": "^1.1.4",
     "@langchain/textsplitters": "^1.0.1",
@@ -29,18 +28,17 @@
     "pg": "^8.18.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "overrides": {
-    "@langchain/core": "1.1.22"
+    "@langchain/core": "1.1.30"
   },
   "resolutions": {
-    "@langchain/core": "1.1.22"
+    "@langchain/core": "1.1.30"
   },
   "pnpm": {
     "overrides": {
-      "@langchain/core": "1.1.22"
+      "@langchain/core": "1.1.30"
     }
   },
   "devDependencies": {

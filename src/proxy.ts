@@ -5,9 +5,8 @@ export function proxy(req: NextRequest) {
   const user = process.env.BASIC_AUTH_USER;
   const password = process.env.BASIC_AUTH_PASSWORD;
 
-  // If credentials are not set in env, allow access but log warning
-  if (!user || !password) {
-    console.warn("Basic Auth credentials not set in environment variables. Auth disabled.");
+  // Skip auth in local development or when credentials are not configured
+  if (process.env.NODE_ENV === "development" || !user || !password) {
     return NextResponse.next();
   }
 
